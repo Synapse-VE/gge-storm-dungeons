@@ -1,5 +1,9 @@
 # GGE Storm & Dungeons — HIS1
 
+**En vivo:** https://synapse-ve.github.io/gge-storm-dungeons/
+**Repo:** https://github.com/Synapse-VE/gge-storm-dungeons
+**Supabase:** proyecto `GGE` (`nadunymqjnzjfyytvfro`)
+
 Tracker independiente para **HIS1 (Hispanoamérica 1, `EmpireEx_25`)** centrado en las dos
 herramientas que el tracker oficial no activa para este servidor: **Islas Tempestuosas**
 (fortalezas + islas de recursos) y **Fortalezas** (dungeons y cooldowns).
@@ -139,6 +143,17 @@ Rutas: `/storm-tracker` y `/dungeons` (la raíz redirige a Storm).
 
 `upsert_storm_scan` y `upsert_dungeons_scan` son `security definer` y solo las puede ejecutar
 `service_role`. El rol `anon` únicamente tiene `SELECT` sobre las vistas.
+
+## Estado verificado (2026-11-05)
+
+- **Pages**: workflow verde, sitio en 200 con datos reales (540 fortalezas, 540 islas,
+  1.692 dungeons).
+- **Supabase**: schema, vistas, RLS y RPCs aplicados; seed de 6.351 jugadores, 527 alianzas,
+  1.692 dungeons y 1.610 ataques.
+- **Local**: `empire-api` en `:3100` conectado, web en `:4300`, collector con `node-cron`
+  corriendo; barridos de storm (1.080 filas) y dungeons (956 y 691 cooldowns) OK.
+- **Docker**: imagen `gge-storm-dungeons:local` construida (427 MB), lista para Render.
+- **Render**: pendiente de deploy; el blueprint y el Dockerfile ya están probados.
 
 ## Deploy
 
