@@ -77,14 +77,20 @@ export async function runDungeons(): Promise<number> {
   const { value, error } = await recordRun('dungeons', async () => {
     if (!(await waitForReady())) throw new Error('empire-api is not ready');
 
-    const { data, error: queryError } = await supabase
-      .from('dungeons')
-      .select('kid,position_x,position_y')
-      .lte('global_available_at', new Date().toISOString())
-      .limit(5000);
-    if (queryError) throw new Error(queryError.message);
-
-    const due = (data ?? []) as DueDungeon[];
+    const due: DueDungeon[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error: queryError } = await supabase
+        .from('dungeons')
+        .select('kid,position_x,position_y')
+        .lte('global_available_at', new Date().toISOString())
+        .order('kid')
+        .order('position_x')
+        .order('position_y')
+        .range(from, from + 999);
+      if (queryError) throw new Error(queryError.message);
+      due.push(...((data ?? []) as DueDungeon[]));
+      if (!data || data.length < 1000) break;
+    }
     console.log(`Dungeons due: ${due.length}`);
     const updates = new Map<string, DungeonUpdate>();
     let done = 0;
