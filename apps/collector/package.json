@@ -1,0 +1,28 @@
+{
+  "name": "gge-storm-dungeons-collector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Storm and dungeons collector for HIS1 (empire-api -> Supabase)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "seed": "tsx src/seed.ts",
+    "storm": "tsx src/index.ts --once storm",
+    "dungeons": "tsx src/index.ts --once dungeons",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

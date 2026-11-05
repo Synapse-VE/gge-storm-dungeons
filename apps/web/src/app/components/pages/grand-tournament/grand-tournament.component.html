@@ -1,0 +1,115 @@
+@if (!selectedAllianceInAnalyzer) {
+  <app-layered-scene scene="tournament" class="tournament-scene" />
+}
+<div class="container tournaments">
+  @if (!selectedAllianceInAnalyzer) {
+    <header class="tournament-hero">
+      <h1>{{ 'Le Grand Tournoi' | translate }}</h1>
+      <p>{{ 'grand-tournament-intro' | translate }}</p>
+    </header>
+    @if (!isEventMissing) {
+      <app-event-timeline [events]="events" [currentDate]="currentDate" [isLoading]="isDataLoading"
+        (dateChange)="loadDate($event)" />
+    }
+    <div class="tournaments-panel p-3 rounded-4">
+      <div class="mb-3">
+        <app-search-form #searchForm [formFilters]="null" [isInLoading]="isInLoading"
+          [inputTip]="'Rechercher une alliance' | translate" [defaultSearch]="search"
+          [searchTypes]="{ player: false, alliance: true }" (searchAlliance)="searchAlliance($event)">
+        </app-search-form>
+      </div>
+      @if (isEventMissing && !isInLoading) {
+        <p class="empty-state text-center my-5">{{ 'Aucun Grand Tournoi enregistré pour le moment' | translate }}</p>
+      } @else {
+        <div class="division-row text-center mb-3">
+          <div class="d-flex justify-content-center gap-3 flex-wrap">
+            @for (i of [1,2,3,4,5]; track i) {
+              <button
+                class="division-button btn btn-ghost d-flex align-items-center justify-content-center"
+                [class.active]="i === division.current_division" (click)="changeDivision(i); division.current_division = i"
+                title="{{ 'Division' | translate }} {{ i }}">
+                <img [src]="'/assets/gt/division' + i + '.png'" alt="division {{i}}">
+              </button>
+            }
+          </div>
+        </div>
+        <div class="mt-2">
+          <app-table [sort]="''" [reverse]="false" [isInLoading]="isDataLoading" [maxPage]="pagination.total_pages"
+          [page]="pagination.current_page" [search]="search" [headers]="[
+            ['allianceName', 'Alliance' | translate, '/assets/min-alliance.png', true],
+            ['server', 'Serveur' | translate, '', true],
+            ['points', 'Points' | translate, '', true],
+            ['currentDivision', 'Division' | translate, '', true],
+            ['currentSubdivision', 'Sous-division' | translate, '', true],
+            ['rankInSubDivision', 'Classement dans la sous-division' | translate, '', true],
+            ['actions', 'Actions' | translate, '', true]
+          ]" (navigateToPage)="navigateTo($event)" (previousPage)="previousPage()" (nextPage)="nextPage()">
+            @if (alliances.length === 0 && !isDataLoading) {
+              <tr>
+                <td colspan="10">{{ 'Aucune alliance trouvée' | translate }}</td>
+              </tr>
+            }
+            @for (alliance of alliances; track alliance; let i = $index) {
+              <tr>
+                <td class="col-rank full-width">
+                  <span class="mobile-only">#</span>
+                  {{ (pagination.current_page-1) * 10 + i + 1 }}
+                </td>
+                <td class="fw-semibold col-name">
+                  <span class="name">{{ alliance.alliance_name }}</span>
+                </td>
+                <td>
+                  <img [src]="serverService.getFlagUrl(alliance.server)" [alt]="alliance.server" [title]="alliance.server" height="20">
+                  {{ alliance.server }}
+                </td>
+                <td class="fw-bold">{{ alliance.score | number }}</td>
+                <td>
+                  <img
+                    [src]="'/assets/gt/division' + (isWithDivision(alliance) ? alliance.division : division.current_division) + '.png'"
+                    width="38"
+                    [title]="('Division' | translate) + ' ' + (divisionNames[(isWithDivision(alliance) ? alliance.division : division.current_division)-1]  | translate)"
+                    [alt]="('Division' | translate) + ' ' + (divisionNames[(isWithDivision(alliance) ? alliance.division : division.current_division)-1] | translate)" />
+                </td>
+                <td>
+                  {{ 'Sous-division' | translate }}
+                  <em>{{ alliance.subdivision }}</em>
+                  @if (!isSubDivisionFilterActivated) {
+                    <i class="fa-solid fa-filter subdivision-indicator ms-2 pointer"
+                      (click)="isWithDivision(alliance) ? filterBySubDivision(alliance.division, alliance.subdivision) : filterBySubDivision(division.current_division, alliance.subdivision)"
+                      (keypress)="$event.key === 'Enter' ? (isWithDivision(alliance) ? filterBySubDivision(alliance.division, alliance.subdivision) : filterBySubDivision(division.current_division, alliance.subdivision)) : null"
+                    title="{{ 'Filtrer' | translate }} ({{ 'Sous-division' | translate }} {{ alliance.subdivision }})"></i>
+                  } @else {
+                    <i class="fa-solid fa-filter-circle-xmark subdivision-indicator ms-2 pointer"
+                      (click)="clearSubDivisionFilter()"
+                    (keypress)="$event.key === 'Enter' ? clearSubDivisionFilter() : null"></i>
+                  }
+                </td>
+                <td>
+                  <span class="cell-label">{{ 'Classement dans la sous-division' | translate }}</span>{{ alliance.rank }}</td>
+                  <td class="col-actions">
+                    <button type="button" class="action-icon button-reset" [class.disabled]="alliance.disabled"
+                      [class.analyzing]="analyzingAllianceId === alliance.alliance_id"
+                      [disabled]="alliance.disabled || analyzingAllianceId !== null"
+                      [attr.aria-busy]="analyzingAllianceId === alliance.alliance_id"
+                      (click)="analyzeAlliance(alliance.alliance_id)" [title]="'Score' | translate">
+                      <img src="/assets/icon_points.png" alt="points" height="24" class="ms-1 btn-icon">
+                      @if (analyzingAllianceId === alliance.alliance_id) {
+                        <span class="analyze-spinner" aria-hidden="true"></span>
+                      }
+                    </button>
+                  </td>
+                </tr>
+              }
+            </app-table>
+          </div>
+      }
+      </div>
+    }
+
+    @if (selectedAllianceInAnalyzer) {
+      <app-grand-tournament-analyze [entries]="selectedAllianceInAnalyzer.analysis"
+        [tournamentAllianceData]="selectedAllianceInAnalyzer.meta" [divisionNames]="divisionNames"
+        (exitEmitter)="selectedAllianceInAnalyzer = null">
+      </app-grand-tournament-analyze>
+    }
+  </div>

@@ -1,0 +1,73 @@
+<div class="modern-search d-flex flex-wrap align-items-stretch justify-content-center gap-2 row">
+  <div class="search-container row">
+    <div class="search-input-wrapper col-12 col-lg">
+      <input
+        [attr.list]="listId()"
+        [placeholder]="inputTip()"
+        [title]="title()"
+        (keydown.enter)="onEnterSearch()"
+        type="text"
+        class="search-input"
+        [(ngModel)]="search"
+         [attr.aria-label]="inputTip()"/>
+      <datalist id="search-list">
+        @for (search of getSearchHistory('all'); track search) {
+          <option [value]="search"></option>
+        }
+      </datalist>
+      <datalist id="player-list">
+        @for (search of getSearchHistory('player'); track search) {
+          <option [value]="search"></option>
+        }
+      </datalist>
+      <datalist id="alliance-list">
+        @for (search of getSearchHistory('alliance'); track search) {
+          <option [value]="search"></option>
+        }
+      </datalist>
+      @if (search) {
+        <button type="button" class="reset-icon button-reset d-flex"
+          [title]="'Réinitialiser' | translate"
+          [attr.aria-label]="'Réinitialiser' | translate"
+          (click)="onReset()">
+          <lucide-icon [img]="Reset"></lucide-icon>
+        </button>
+      }
+    </div>
+    @if (searchTypes()['player']) {
+      <div class="col-auto search-action">
+        <button class="btn-modern btn-player" (click)="onPlayerSearch()"
+          [attr.aria-label]="'Rechercher le joueur' | translate">
+          <lucide-icon class="lucide lucide-search" [img]="Search"></lucide-icon>
+          <span class="label-long">{{ 'Rechercher le joueur' | translate }}</span>
+          <span class="label-short">{{ 'Joueur' | translate }}</span>
+        </button>
+      </div>
+    }
+    @if (searchTypes()['alliance']) {
+      <div class="col-auto search-action">
+        <button class="btn-modern btn-alliance" (click)="onAllianceSearch()"
+          [attr.aria-label]="!alliancePlaceholder() ? ('Rechercher l\'alliance' | translate) : alliancePlaceholder()">
+          <lucide-icon class="lucide lucide-search" [img]="Search"></lucide-icon>
+          <span class="label-long">{{ !alliancePlaceholder() ? ('Rechercher l\'alliance' | translate) : alliancePlaceholder() }}</span>
+          <span class="label-short">{{ !alliancePlaceholder() ? ('Alliance' | translate) : alliancePlaceholder() }}</span>
+        </button>
+      </div>
+    }
+    @if (formFilters() !== null && searchFixed === '') {
+      <div class="col-auto search-tool">
+        <app-filter
+          [countFilterActivated]="countFilterActivated"
+          [modalId]="filtersModalId()"
+        ></app-filter>
+      </div>
+    }
+    @if (exportDataEnabled()) {
+      <div class="col-auto search-tool">
+        <button class="btn-modern btn-filter" (click)="exportData.emit()" [title]="'Exporter les données' | translate"
+          [attr.aria-label]="'Exporter les données' | translate">
+          <lucide-icon class="lucide lucide-download" [img]="Download"></lucide-icon>
+        </button>
+      </div>
+    }
+  </div>

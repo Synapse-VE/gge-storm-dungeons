@@ -1,0 +1,45 @@
+::ng-deep .renames #table-component th, td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+::ng-deep .renames #table-component td {
+  padding: 8px 0;
+}
+
+::ng-deep .renames #table-component .old-value .name {
+  color: #8e9aa8;
+  font-weight: 500;
+}
+
+::ng-deep .renames #table-component .new-name {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+::ng-deep .renames #table-component .rename-arrow {
+  color: #4ade80;
+  flex: 0 0 auto;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+@container tracker-table (max-width: 899.98px) {
+  ::ng-deep .renames #table-component .table-custom td.col-name {
+    border-radius: 8px;
+    display: block;
+    flex: 1 1 calc(50% - 30px);
+    padding: 5px 8px !important;
+  }
+
+  ::ng-deep .renames #table-component .table-custom td.col-name .name {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

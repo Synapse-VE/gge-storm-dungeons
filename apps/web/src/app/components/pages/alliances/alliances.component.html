@@ -1,0 +1,292 @@
+
+<div class="container alliances my-3">
+  <nav class="scope-switch mb-2" role="tablist">
+    <button type="button" class="scope-tab" role="tab" [attr.aria-selected]="scope === 'server'"
+      [class.scope-tab--on]="scope === 'server'" (click)="switchScope('server')">
+      @if (serverService.currentServer; as server) {
+        <img [src]="serverService.getFlagUrl(server.name)" alt="" height="18">
+        <span>{{ server.name }}</span>
+      }
+    </button>
+    <button type="button" class="scope-tab" role="tab" [attr.aria-selected]="scope === 'global'"
+      [class.scope-tab--on]="scope === 'global'" (click)="switchScope('global')">
+      <img src="/assets/map.webp" alt="" height="22">
+      <span>{{ 'Classement mondial' | translate }}</span>
+    </button>
+  </nav>
+  @if (scope === 'global') {
+  <app-global-alliances></app-global-alliances>
+  } @else {
+  <div class="row">
+    <div class="col-12" [ngClass]="{'loading': isInLoading}">
+      <app-search-form
+        [isInLoading]="isInLoading"
+        [formFilters]="formFilters"
+        [inputTip]="'Rechercher une alliance' | translate"
+        [searchTypes]="{
+          player: false,
+          alliance: true
+        }"
+        [exportDataEnabled]="true"
+        (exportData)="exportData()"
+        (searchAlliance)="searchAlliance($event)"
+      ></app-search-form>
+
+      <div class="flex flex-col justify-between gap-6 mt-2">
+        <app-table
+          [sort]="sort"
+          [reverse]="reverse"
+          [isInLoading]="isInLoading"
+          [maxPage]="maxPage!"
+          [page]="page"
+          [search]="search"
+          [iconCaptions]="true"
+          [headers]="[
+            ['name', 'Nom'],
+            ['player_count', 'Nombre de joueurs', '/assets/member-list.png'],
+            ['might_current', 'Puissance de l\'alliance', '/assets/pp1.png'],
+            ['loot_current', 'Points de pillage hebdomadaire', '/assets/loot.png'],
+            ['current_fame', 'Points de gloire', '/assets/glory.png'],
+            ['active_player_count', 'Nombre de joueurs actifs', '/assets/member-list-activity.png'],
+            ['', '', undefined, true]
+          ]"
+          (sortOutput)="sortAlliances($event)"
+          (navigateToPage)="navigateTo($event)"
+          (previousPage)="previousPage()"
+          (nextPage)="nextPage()">
+          @if (alliances.length === 0  && !isInLoading) {
+            <tr>
+              <td colspan="10" class="no-data">{{ 'Aucune alliance trouvée' | translate }}</td>
+            </tr>
+          }
+          @for (alliance of alliances; track alliance.id) {
+            <tr [class.row-favorite]="follow.isFollowingAlliance(alliance.id)">
+              <!-- Rank -->
+              <td class="col-rank">
+                <span class="mobile-only">#</span>
+                {{ alliance.rank }}
+              </td>
+              <!-- Name -->
+              <td class="col-name" [ngClass]="{ 'island-king-name': alliance.isIslandKing }">
+                @if (alliance.isIslandKing) {
+                  <img class="island-king-icon me-2" src="/assets/aquamarine_15.webp" alt="Current Alliance Stormlord" [title]="'current_stormlord' | translate">
+                }
+                <span class="name" [title]="alliance.name">{{ alliance.name }}</span>
+              </td>
+              <!-- Player Count -->
+              <td class="col-metric px-2" [title]="alliance.playerCount | formatNumber:'visual'">
+                <div class="metric">
+                  <div class="metric-header">
+                    <span class="metric-current"><span class="cell-label">{{ 'Nombre de joueurs' | translate }}</span>{{ alliance.playerCount | formatNumber }}</span>
+                    <span class="metric-max">65</span>
+                  </div>
+                  <div class="metric-bar-bg">
+                    <div class="metric-bar bar-purple" [style.width.%]="(alliance.playerCount / 65) * 100"></div>
+                  </div>
+                </div>
+              </td>
+              <!-- Might -->
+              <td class="col-metric px-2" [title]="alliance.mightAllTime | formatNumber:'visual'">
+                <div class="metric">
+                  <div class="metric-header">
+                    <span class="metric-current"><span class="cell-label">{{ 'Puissance' | translate }}</span>{{ alliance.mightCurrent | formatNumber }}</span>
+                    <span class="metric-max">{{ alliance.mightAllTime | formatNumber }}</span>
+                  </div>
+                  <div class="metric-bar-bg">
+                    <div class="metric-bar bar-yellow"
+                    [style.width.%]="(alliance.mightCurrent / alliance.mightAllTime) * 100"></div>
+                  </div>
+                </div>
+              </td>
+              <!-- Loot -->
+              <td class="col-metric px-2" [title]="alliance.lootAllTime | formatNumber:'visual'">
+                <div class="metric">
+                  <div class="metric-header">
+                    <span class="metric-current"><span class="cell-label">{{ 'Pillage hebdomadaire' | translate }}</span>{{ alliance.lootCurrent | formatNumber }}</span>
+                    <span class="metric-max">{{ alliance.lootAllTime | formatNumber }}</span>
+                  </div>
+                  <div class="metric-bar-bg">
+                    <div class="metric-bar bar-gray" [style.width.%]="(alliance.lootCurrent / alliance.lootAllTime) * 100">
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <!-- Fame -->
+              <td class="col-metric px-2" [title]="alliance.highestFame | formatNumber:'visual'">
+                <div class="metric">
+                  <div class="metric-header">
+                    <span class="metric-current"><span class="cell-label">{{ 'Points de gloire' | translate }}</span>{{ alliance.currentFame | formatNumber }}</span>
+                    <span class="metric-max">{{ alliance.highestFame | formatNumber }}</span>
+                  </div>
+                  <div class="metric-bar-bg">
+                    <div class="metric-bar bar-blue"
+                    [style.width.%]="(alliance.currentFame / alliance.highestFame) * 100"></div>
+                  </div>
+                </div>
+              </td>
+              <!-- Active Player Count -->
+              <td class="col-metric px-2" [title]="alliance.activePlayerCount + ' / ' + alliance.playerCount + ' (' + ((alliance.activePlayerCount / alliance.playerCount) * 100 | number:'1.0-2') + '%)'">
+                <div class="metric">
+                  <div class="metric-header">
+                    <span class="metric-current"><span class="cell-label">{{ 'Nombre de joueurs actifs' | translate }}</span>{{ alliance.activePlayerCount }} / {{ alliance.playerCount }}</span>
+                    <span class="metric-max">
+                      {{ (alliance.activePlayerCount / alliance.playerCount) * 100 | number:'1.0-2' }}%
+                    </span>
+                  </div>
+                  <div class="metric-bar-bg">
+                    <div class="metric-bar bar-green" [style.width.%]="(alliance.activePlayerCount / alliance.playerCount) * 100"></div>
+                  </div>
+                </div>
+              </td>
+              <!-- Actions -->
+              <td class="col-actions">
+                <div class="action-buttons d-flex justify-content-center">
+                  <a [routerLink]="['/', 'alliance', alliance.id]" class="action-button"
+                    [attr.aria-label]="'Analyser l\'alliance' | translate" [attr.data-tooltip]="'Analyser l\'alliance' | translate">
+                    <img src="/assets/icon_analyze.png" alt="" height="24" class="btn-icon">
+                  </a>
+                  <a [routerLink]="['/', 'map', alliance.id]" class="action-button"
+                    [attr.aria-label]="'Carte d\'alliance' | translate" [attr.data-tooltip]="'Carte d\'alliance' | translate">
+                    <img src="/assets/icon_world.png" alt="" height="24" class="btn-icon">
+                  </a>
+                  <button type="button" class="button-reset d-inline-flex action-button" (click)="follow.toggleAlliance(alliance.id)"
+                    [attr.aria-pressed]="follow.isFollowingAlliance(alliance.id)"
+                    [attr.aria-label]="(follow.isFollowingAlliance(alliance.id) ? 'follow.unfollow' : 'follow.follow') | translate"
+                    [attr.data-tooltip]="(follow.isFollowingAlliance(alliance.id) ? 'follow.unfollow' : 'follow.follow') | translate">
+                    <img [src]="'/assets/icon_friends' + (follow.isFollowingAlliance(alliance.id) ? '2' : '') + '.png'" alt=""
+                      class="btn-icon btn-favorite" [class.is-favorite]="follow.isFollowingAlliance(alliance.id)">
+                  </button>
+                </div>
+              </td>
+            </tr>
+          }
+        </app-table>
+      </div>
+    </div>
+  </div>
+  }
+
+
+  <div class="modal fade" id="filtersModal" tabindex="-1" aria-labelledby="filtersModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="filtersModalLabel">
+            <i class="fa-solid fa-filter"></i>&nbsp;{{ 'Filtrer les résultats' | translate }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+          [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <div class="filters-container">
+            <div class="row">
+              <!-- Might -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/pp1.png" [attr.alt]="'Puissance' | translate"
+                      [title]="'Filtrer par point de puissance' | translate">
+                  </span>
+                  <input field type="text" id="mightMin"
+                    [value]="displayFormValues.might.min" (focus)="onGenericFocus('min', 'might')"
+                    (blur)="onGenericBlur('min', 'might')" (input)="onGenericInput('min', 'might', $event)"
+                    [title]="formFilters.minMight" [placeholder]="'Puissance min' | translate" [attr.aria-label]="'Puissance min' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="mightMax"
+                    [value]="displayFormValues.might.max" (focus)="onGenericFocus('max', 'might')"
+                    (blur)="onGenericBlur('max', 'might')" (input)="onGenericInput('max', 'might', $event)"
+                    [title]="formFilters.maxMight" [placeholder]="'Puissance max' | translate" [attr.aria-label]="'Puissance max' | translate">
+                </app-modal-form-group>
+              </div>
+              <!-- Loot -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/loot.png" [attr.alt]="'Pillage' | translate"
+                      [title]="'Filtrer par point de pillage' | translate">
+                  </span>
+                  <input field type="text" id="lootMin"
+                    [value]="displayFormValues.loot.min" (focus)="onGenericFocus('min', 'loot')"
+                    (blur)="onGenericBlur('min', 'loot')" (input)="onGenericInput('min', 'loot', $event)"
+                    [title]="formFilters.minLoot" [placeholder]="'Pillage min.' | translate" [attr.aria-label]="'Pillage min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="lootMax"
+                    [value]="displayFormValues.loot.max" (focus)="onGenericFocus('max', 'loot')"
+                    (blur)="onGenericBlur('max', 'loot')" (input)="onGenericInput('max', 'loot', $event)"
+                    [title]="formFilters.maxLoot" [placeholder]="'Pillage max.' | translate" [attr.aria-label]="'Pillage max.' | translate">
+                </app-modal-form-group>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <!-- Fame (glory) -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/glory.png" [attr.alt]="'Points de gloire' | translate"
+                      [title]="'Filtrer par gloire' | translate">
+                  </span>
+                  <input field type="text" id="fameMin"
+                    [value]="displayFormValues.fame.min" (focus)="onGenericFocus('min', 'fame')"
+                    (blur)="onGenericBlur('min', 'fame')" (input)="onGenericInput('min', 'fame', $event)"
+                    [title]="formFilters.minFame" [placeholder]="'Gloire min.' | translate" [attr.aria-label]="'Gloire min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="fameMax"
+                    [value]="displayFormValues.fame.max" (focus)="onGenericFocus('max', 'fame')"
+                    (blur)="onGenericBlur('max', 'fame')" (input)="onGenericInput('max', 'fame', $event)"
+                    [title]="formFilters.maxFame" [placeholder]="'Gloire max.' | translate" [attr.aria-label]="'Gloire max.' | translate">
+                </app-modal-form-group>
+              </div>
+              <!-- Member count -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/member-list.png" [attr.alt]="'Nombre de joueurs' | translate"
+                      [title]="'Filtrer par nombre de membres' | translate">
+                  </span>
+                  <input field type="number" id="playerCountMin"
+                    [(ngModel)]="formFilters.minPlayerCount" min="0" max="65" autocomplete="off"
+                    [title]="formFilters.minPlayerCount" [placeholder]="'Nombre de membres min.' | translate" [attr.aria-label]="'Nombre de membres min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="number" id="playerCountMax"
+                    [(ngModel)]="formFilters.maxPlayerCount" min="0" max="65" autocomplete="off"
+                    [title]="formFilters.maxPlayerCount" [placeholder]="'Nombre de membres max.' | translate" [attr.aria-label]="'Nombre de membres max.' | translate">
+                </app-modal-form-group>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <div class="container-fluid">
+                <div class="col-12">
+                  <app-modal-form-group [label]="'Trier les résultats' | translate">
+                    <select field [(ngModel)]="sort" [attr.aria-label]="'Trier les résultats' | translate">
+                      @for (option of sortByOptions; track option) {
+                        <option [value]="option.value">{{ option.label | translate }}</option>
+                      }
+                    </select>
+                    <button action reset (click)="sort = sort; reverse = !reverse">
+                      <i class="fa-solid" [ngClass]="{'fa-arrow-down-long': !reverse, 'fa-arrow-up-long': reverse}"></i>
+                      @if (!reverse) { <span>{{ 'Descendant' | translate }}</span> }
+                      @if (reverse) { <span>{{ 'Ascendant' | translate }}</span> }
+                    </button>
+                  </app-modal-form-group>
+                </div>
+              </div>
+              <div class="modal-actions">
+                <button type="button" class="modal-action primary" (click)="applyFilters()" data-bs-dismiss="modal">
+                  <i class="fa-solid fa-check"></i>
+                  <span>{{ 'Appliquer les filtres' | translate }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>

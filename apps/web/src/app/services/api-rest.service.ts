@@ -1,0 +1,1111 @@
+import { inject, Injectable } from '@angular/core';
+
+import { PageTemplateService } from './page-template.service';
+import { SupabaseApiService } from './supabase-api.service';
+import { ServerService } from './server.service';
+import { ToastService } from './toast.service';
+import { environment } from '../../environments/environment';
+import {
+  ApiResponse,
+  ApiEventThresholdSlug,
+  ApiEventThresholdsResponse,
+  ApiTop3EventsById,
+  ApiPlayersResponse,
+  ApiGlobalAlliancesResponse,
+  ApiGlobalPlayersResponse,
+  ApiAllianceResponse,
+  ApiServerStats,
+  ApiPlayerUpdatesByPlayerId,
+  ApiAllianceUpdatesByPlayerId,
+  ApiPlayerStatsByAllianceId,
+  ApiPlayerStatsByPlayerId,
+  ApiPlayerEventOccurrences,
+  ApiPlayerStatsSummary,
+  ApiCartoAlliance,
+  ApiCartoMap,
+  ApiMovementsResponse,
+  ApiRenamesResponse,
+  ApiLastUpdates,
+  ApiPlayerSearchResponse,
+  ApiAlliancePlayersSearchResponse,
+  ApiUpdateAlliancePlayersResponse,
+  ErrorType,
+  ApiDungeonsResponse,
+  ApiStormFortsResponse,
+  ApiStormIslesResponse,
+  ApiStormMetaResponse,
+  ApiAllianceHealthResponse,
+  ApiEventlist,
+  ApiOuterRealmEvent,
+  ApiOuterRealmPlayers,
+  ApiAllianceSearchResponse,
+  ApiAllianceProfile,
+  ApiBulkAlliancesResponse,
+  ApiBulkPlayersResponse,
+  ApiAllianceSuggestion,
+  ApiPlayerProfile,
+  ApiPlayerSuggestion,
+  ApiSuggestionsResponse,
+  ApiRankingStatsPlayer,
+  ApiPlayerCastleNameResponse,
+  ApiPlayerCastleDataResponse,
+  ApiGrandTournamentDatesResponse,
+  ApiGrandTournamentAlliancesResponse,
+  ApiGrandTournamentAlliancesSearchResponse,
+  ApiGrandTournamenAllianceAnalysisResponse,
+  ApiRiftRaidAllianceAnalysisResponse,
+  ApiAllianceTournamentStandingsResponse,
+  ApiRiftRaidAlliancesResponse,
+  ApiRiftRaidDatesResponse,
+  ApiRiftRaidSearchResponse,
+  ApiLiveRankingResponse,
+  LiveRankingExportFormat,
+  LiveRankingFilters,
+  ApiLiveRankingSpecificPlayerResponse,
+  ApiEventsByPlayerIdResponse,
+  ApiWoaEventListResponse,
+  ApiWoaEventDataResponse,
+  ApiWoaEventPlayerDataResponse,
+  ApiDungeonsByPlayerIdResponse,
+  ApiDungeonsMetaResponse,
+  ApiAquamarinePlayerResponse,
+  ApiStormyIslesLeaderboardResponse,
+  ApiOffersCatalog,
+  ApiOffersCatalogResponse,
+  ApiReleaseNotesResponse,
+} from '@ggetracker-interfaces/empire-ranking';
+
+export interface DungeonsListQuery {
+  page: number;
+  size: number;
+  filterByKid: string;
+  filterByAttackCooldown: number | null;
+  filterByPlayerName: string | null;
+  positionX: number | null;
+  positionY: number | null;
+  nearPlayerName: string | null;
+}
+
+interface StormListQuery {
+  page: number;
+  size: number;
+  positionX?: number | null;
+  positionY?: number | null;
+  nearPlayerName?: string | null;
+  maxDistance?: number | null;
+  filterByIsleIds?: number[] | null;
+  orderBy?: string | null;
+  orderDirection?: 'asc' | 'desc' | null;
+}
+
+export interface StormFortsListQuery extends StormListQuery {
+  filterByAvailability?: number | null;
+  minAttacksLeft?: number | null;
+}
+
+export interface StormIslesListQuery extends StormListQuery {
+  filterByState?: number | null;
+  filterByOccupierName?: string | null;
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+/**
+ * Service for interacting with the GGE Tracker API
+ *
+ * Provides methods to fetch and manipulate data related to players, alliances, dungeons, events, cartography, movements, renames, statistics, and other game-related entities
+ * Handles API errors, rate limiting, and maintenance redirects
+ *
+ * @remarks
+ * - All methods return a promise resolving to an `ApiResponse<T>` object
+ * - Uses injected `ServerService` for server selection and `ToastService` for error notifications
+ * - API base URL is configurable via environment variables
+ *
+ */
+export class ApiRestService {
+  public static readonly apiUrl = environment.apiUrl;
+  public responseMs = 0;
+  public serverService = inject(ServerService);
+  public toastService = inject(ToastService);
+  private readonly pageTemplateService = inject(PageTemplateService);
+  private readonly supabaseApi = inject(SupabaseApiService);
+
+  /**
+   * Fetch data from the API
+   * @param url The URL to fetch data from
+   * @returns A promise that resolves to the data fetched from the API
+   */
+  public async apiFetch<T>(url: string, doNotUpdateLocation = true, options?: RequestInit): Promise<ApiResponse<T>> {
+    try {
+      const now = Date.now();
+      const headers = new Headers(options?.headers ?? { 'gge-server': this.serverService.currentServer!.name });
+      headers.set('X-GGE-Page', this.pageTemplateService.current());
+      const response = await fetch(url, { ...options, headers });
+      if (!response.ok) {
+        if (response.status === 429) {
+          this.toastService.add(ErrorType.RATE_LIMIT_EXCEEDED, 5000);
+          throw new Error('Too many requests, please try again later.');
+        }
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.error || ErrorType.ERROR_OCCURRED,
+        };
+      }
+      const data = await response.json();
+      this.updateResponseMs(now, Date.now());
+      if (data.error) return { success: false, error: data.error };
+      return { success: true, data, headers: response.headers };
+    } catch (error: unknown) {
+      if (doNotUpdateLocation && error instanceof Error) {
+        const message = error.message;
+        if (message.includes('Failed to fetch') || message.includes('ERR_CONNECTION_REFUSED')) {
+          globalThis.location.replace('/maintenance');
+        }
+      }
+      return { success: false, error: ErrorType.ERROR_OCCURRED };
+    }
+  }
+
+  /**
+   * Generic function to get data from the API
+   * @param method The method to call
+   * @param args The arguments to pass to the method
+   * @returns A promise that resolves to the data fetched from the API
+   */
+  public async getGenericData<T, A extends unknown[]>(
+    method: (...arguments_: A) => Promise<ApiResponse<T>>,
+    ...arguments_: A
+  ): Promise<{ data: T; response: number }> {
+    const startTimer = Date.now();
+    const data = await method(...arguments_);
+    if (data.success === false) throw new Error(data.error);
+    const response = Date.now() - startTimer;
+    return { data: data.data, response };
+  }
+
+  /**
+   * Legacy function to get a screenshot of the map (deprecated)
+   * @param parameters The parameters to pass to the API
+   * @returns A promise that resolves to the screenshot data
+   * @deprecated This function is deprecated and should not be used
+   */
+  public async getScreenshot(parameters: string): Promise<ApiResponse<Blob>> {
+    const response = await fetch(`${ApiRestService.apiUrl}screenshot?${parameters}`);
+    const data = await response.blob();
+    return { success: true, data };
+  }
+
+  /**
+   * Get the top 3 events for a player
+   * @param playerId The ID of the player
+   * @returns A promise that resolves to the top 3 events data
+   */
+  public async getTop3Events(playerId: number): Promise<ApiResponse<ApiTop3EventsById>> {
+    const response = await this.apiFetch<ApiTop3EventsById>(`${ApiRestService.apiUrl}top-players/${playerId}`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getOffers(
+    level: number,
+    legendaryLevel: number,
+    locale: string,
+    currency: string,
+  ): Promise<ApiResponse<ApiOffersCatalog>> {
+    const request = `${ApiRestService.apiUrl}offers?locale=${locale}&currency=${currency}&level=${level}&legendaryLevel=${legendaryLevel}`;
+    const response = await this.apiFetch<ApiOffersCatalogResponse>(request);
+    if (!response.success) return response;
+    const catalog: ApiOffersCatalog = {
+      catalog: response.data,
+      fetchedAt: response.headers?.get('X-Offers-Fetched-At') ?? null,
+      pricedIn: response.headers?.get('X-Offers-Currency') ?? null,
+    };
+    return { success: true, data: catalog };
+  }
+
+  public async getDungeonsByPlayerId(playerId: number): Promise<ApiResponse<ApiDungeonsByPlayerIdResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.dungeonsByPlayer(playerId) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getDungeonsMeta(): Promise<ApiResponse<ApiDungeonsMetaResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.dungeonsMeta() };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getDungeonsList(query: DungeonsListQuery): Promise<ApiResponse<ApiDungeonsResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.dungeons(query) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getStormFortsList(query: StormFortsListQuery): Promise<ApiResponse<ApiStormFortsResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.stormForts(query) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getStormIslesList(query: StormIslesListQuery): Promise<ApiResponse<ApiStormIslesResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.stormIsles(query) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getReleaseNotes(): Promise<ApiResponse<ApiReleaseNotesResponse>> {
+    return this.apiFetch<ApiReleaseNotesResponse>(`${ApiRestService.apiUrl}release-notes`);
+  }
+
+  public async getStormMeta(): Promise<ApiResponse<ApiStormMetaResponse>> {
+    try {
+      return { success: true, data: await this.supabaseApi.stormMeta() };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getPlayers(
+    page: number,
+    orderBy?: string,
+    orderType?: string,
+    allianceNameFilter?: string,
+    filters?: Record<string, string | number>,
+    size?: number,
+  ): Promise<ApiResponse<ApiPlayersResponse>> {
+    let request = `${ApiRestService.apiUrl}players?page=${page}`;
+    if (size) request += `&size=${size}`;
+    if (orderBy) request += `&orderBy=${orderBy}`;
+    if (orderType) request += `&orderType=${orderType}`;
+    if (allianceNameFilter) request += `&alliance=${allianceNameFilter}`;
+    if (filters) {
+      for (const key in filters) {
+        if (filters[key] !== undefined) {
+          request += `&${key}=${filters[key]}`;
+        }
+      }
+    }
+    const response = await this.apiFetch<ApiPlayersResponse>(request);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getGlobalPlayers(
+    page: number,
+    orderBy: string,
+    orderType: 'ASC' | 'DESC',
+    filters: Record<string, string | number>,
+    size?: number,
+  ): Promise<ApiResponse<ApiGlobalPlayersResponse>> {
+    const parameters = new URLSearchParams({ page: String(page), orderBy, orderType });
+    if (size) parameters.set('size', String(size));
+    for (const [key, value] of Object.entries(filters)) parameters.set(key, String(value));
+    return this.apiFetch<ApiGlobalPlayersResponse>(`${ApiRestService.apiUrl}global-ranking/players?${parameters}`);
+  }
+
+  public async getGlobalAlliances(
+    page: number,
+    orderBy: string,
+    orderType: 'ASC' | 'DESC',
+    filters: Record<string, string | number>,
+    size?: number,
+  ): Promise<ApiResponse<ApiGlobalAlliancesResponse>> {
+    const parameters = new URLSearchParams({ page: String(page), orderBy, orderType });
+    if (size) parameters.set('size', String(size));
+    for (const [key, value] of Object.entries(filters)) parameters.set(key, String(value));
+    return this.apiFetch<ApiGlobalAlliancesResponse>(`${ApiRestService.apiUrl}global-ranking/alliances?${parameters}`);
+  }
+
+  /**
+   * Get the alliances from the API and filter them by the given parameters
+   * @param page The page number to fetch
+   * @param orderBy Optional parameter to order the results by a specific field
+   * @param orderType Optional parameter to specify the order type (asc or desc)
+   * @returns A promise that resolves to the alliances data
+   */
+  public async getAlliances(
+    page: number,
+    orderBy?: string,
+    orderType?: string,
+    filters?: Record<string, string | number>,
+    size?: number,
+  ): Promise<ApiResponse<ApiAllianceResponse>> {
+    let request = `${ApiRestService.apiUrl}alliances?page=${page}`;
+    if (size) request += `&size=${size}`;
+    if (orderBy) request += `&orderBy=${orderBy}`;
+    if (orderType) request += `&orderType=${orderType}`;
+    if (filters) {
+      for (const key in filters) {
+        if (filters[key] !== undefined) {
+          request += `&${key}=${filters[key]}`;
+        }
+      }
+    }
+    const response = await this.apiFetch<ApiAllianceResponse>(request);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the server global statistics from the API
+   * @returns A promise that resolves to the server global statistics data
+   */
+  public async getServerGlobalStats(): Promise<ApiResponse<ApiServerStats[]>> {
+    const response = await this.apiFetch<ApiServerStats[]>(`${ApiRestService.apiUrl}server/statistics`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the updates for a player by their ID. Updates include changes in player name
+   * @param playerId The ID of the player
+   * @returns A promise that resolves to the updates data
+   */
+  public async getPlayerUpdatesByPlayerId(playerId: number): Promise<ApiResponse<ApiPlayerUpdatesByPlayerId>> {
+    const response = await this.apiFetch<ApiPlayerUpdatesByPlayerId>(
+      `${ApiRestService.apiUrl}updates/players/${playerId}/names`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the updates for a player by their ID. Updates include changes in alliance
+   * @param playerId The ID of the player
+   * @returns A promise that resolves to the updates data
+   */
+  public async getAllianceUpdatesByPlayerId(playerId: number): Promise<ApiResponse<ApiAllianceUpdatesByPlayerId>> {
+    const response = await this.apiFetch<ApiAllianceUpdatesByPlayerId>(
+      `${ApiRestService.apiUrl}updates/players/${playerId}/alliances`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the statistics for a player by their alliance ID
+   * @param allianceId The ID of the alliance
+   * @returns A promise that resolves to the statistics data
+   */
+  public async getPlayersStatsByAllianceId(allianceId: number): Promise<ApiResponse<ApiPlayerStatsByAllianceId>> {
+    const response = await this.apiFetch<ApiPlayerStatsByAllianceId>(
+      `${ApiRestService.apiUrl}statistics/alliance/${allianceId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the statistics for a player by their ID
+   * @param playerId The ID of the player
+   * @returns A promise that resolves to the statistics data
+   */
+  public async getPlayerStatsByPlayerId(playerId: number): Promise<ApiResponse<ApiPlayerStatsByPlayerId>> {
+    const response = await this.apiFetch<ApiPlayerStatsByPlayerId>(
+      `${ApiRestService.apiUrl}statistics/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the headline summary for a player: identity, alliance and one aggregate per event table
+   *
+   * @param playerId The ID of the player
+   * @returns A promise that resolves to the summary data
+   */
+  public async getPlayerStatsSummaryByPlayerId(playerId: number): Promise<ApiResponse<ApiPlayerStatsSummary>> {
+    const response = await this.apiFetch<ApiPlayerStatsSummary>(
+      `${ApiRestService.apiUrl}statistics/player/${playerId}/summary`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the point series of specific event tables for a player, over a bounded window
+   *
+   * @param playerId The ID of the player
+   * @param events The event tables to fetch
+   * @param sinceInDays How many days back to fetch, 1 to 365
+   * @returns A promise that resolves to the statistics data, holding only the requested tables
+   */
+  public async getPlayerStatsSeriesByPlayerId(
+    playerId: number,
+    events: string[],
+    sinceInDays: number,
+  ): Promise<ApiResponse<ApiPlayerStatsByPlayerId>> {
+    const query = new URLSearchParams({
+      events: events.join(','),
+      since: String(sinceInDays),
+      dedup: '1',
+    });
+    const response = await this.apiFetch<ApiPlayerStatsByPlayerId>(
+      `${ApiRestService.apiUrl}statistics/player/${playerId}?${query.toString()}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get every run of one event for a player, with the score they finished each one on
+   *
+   * @param playerId The ID of the player
+   * @param eventName The event table to report on
+   * @returns A promise that resolves to the runs, oldest first
+   */
+  public async getPlayerEventOccurrencesByPlayerId(
+    playerId: number,
+    eventName: string,
+  ): Promise<ApiResponse<ApiPlayerEventOccurrences>> {
+    const response = await this.apiFetch<ApiPlayerEventOccurrences>(
+      `${ApiRestService.apiUrl}statistics/player/${playerId}/${eventName}/occurrences`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the statistics for a player by their ID and event ID, filtered by a specific duration in days
+   * @param playerId The ID of the player
+   * @param eventName The name of the event
+   * @param durationInDays The duration in days to filter the statistics
+   * @returns A promise that resolves to the statistics data
+   */
+  public async getPlayerStatsOnSpecificEventByPlayerId(
+    playerId: number,
+    eventName: string,
+    durationInDays: number,
+  ): Promise<ApiResponse<ApiPlayerStatsByPlayerId>> {
+    const response = await this.apiFetch<ApiPlayerStatsByPlayerId>(
+      `${ApiRestService.apiUrl}statistics/player/${playerId}/${eventName}/${durationInDays}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the statistics for a player by their ID
+   * @param alliance The name of the alliance
+   * @returns A promise that resolves to the statistics data
+   */
+  public async getCartoAllianceByName(alliance: string, worldId = 0): Promise<ApiResponse<ApiCartoMap[]>> {
+    const response = await this.apiFetch<ApiCartoMap[]>(
+      `${ApiRestService.apiUrl}cartography/name/${alliance}?worldId=${worldId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the cartography data for a specific alliance by its ID
+   * @param allianceId The ID of the alliance
+   * @returns A promise that resolves to the cartography data
+   */
+  public async getCartoAlliance(allianceId: number, worldId = 0): Promise<ApiResponse<ApiCartoAlliance[]>> {
+    const response = await this.apiFetch<ApiCartoAlliance[]>(
+      `${ApiRestService.apiUrl}cartography/id/${allianceId}?worldId=${worldId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the cartography map data for a specific alliance by its number
+   * @param allianceNb The number of the alliance
+   * @returns A promise that resolves to the cartography map data
+   */
+  public async getCartoMap(allianceNb: number, worldId = 0): Promise<ApiResponse<ApiCartoMap[]>> {
+    const response = await this.apiFetch<ApiCartoMap[]>(
+      `${ApiRestService.apiUrl}cartography/size/${allianceNb}?worldId=${worldId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Return the movements data from the API by page, search, searchType, castleType, and movementType.
+   * @param page The page number to fetch
+   * @param search The search term to filter the results
+   * @param searchType The type of search (e.g., player, alliance)
+   * @param castleType The type of castle (e.g., castle, outpost)
+   * @param movementType The type of movement (e.g., move, conquer)
+   * @returns A promise that resolves to the movements data
+   */
+  public async getMovements(
+    page: number,
+    search: string | null,
+    searchType: string | null,
+    castleType: number | null,
+    movementType: number | null,
+    filters?: Record<string, string | number>,
+  ): Promise<ApiResponse<ApiMovementsResponse>> {
+    let request = `${ApiRestService.apiUrl}server/movements?page=${page}&search=${search}&searchType=${searchType}&castleType=${castleType}&movementType=${movementType}`;
+    if (filters) {
+      for (const key in filters) {
+        if (filters[key] !== undefined) {
+          request += `&${key}=${filters[key]}`;
+        }
+      }
+    }
+    const response = await this.apiFetch<ApiMovementsResponse>(request);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the movements data from the API by alliance ID
+   * @param page The page number to fetch
+   * @param search The alliance ID to filter the results
+   * @param searchType The type of search (e.g., player, alliance)
+   * @param castleType The type of castle (e.g., castle, outpost)
+   * @param movementType The type of movement (e.g., move, conquer)
+   * @returns A promise that resolves to the movements data
+   */
+  public async getMovementsbyAllianceId(
+    page: number,
+    search: number,
+    searchType: string | null,
+    castleType: number | null,
+    movementType: number | null,
+  ): Promise<ApiResponse<ApiMovementsResponse>> {
+    const response = await this.apiFetch<ApiMovementsResponse>(
+      `${ApiRestService.apiUrl}server/movements?page=${page}&allianceId=${search}&searchType=${searchType}&castleType=${castleType}&movementType=${movementType}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the renames data from the API
+   * @param page The page number to fetch
+   * @param search The search term to filter the results
+   * @param searchType The type of search (e.g., player, alliance)
+   * @param showType The type of show (e.g., all, only)
+   * @returns A promise that resolves to the renames data
+   */
+  public async getRenames(
+    page: number,
+    search: string | null,
+    searchType: string | null,
+    showType?: string,
+  ): Promise<ApiResponse<ApiRenamesResponse>> {
+    const response = await this.apiFetch<ApiRenamesResponse>(
+      `${ApiRestService.apiUrl}server/renames?page=${page}&search=${search}&searchType=${searchType}&showType=${showType}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the last updates from the API
+   * @returns A promise that resolves to the last updates data
+   */
+  public async getLastUpdates(notUpdateLocation = true): Promise<ApiResponse<ApiLastUpdates>> {
+    const response = await this.apiFetch<ApiLastUpdates>(`${ApiRestService.apiUrl}`, notUpdateLocation);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the player data from the API by their name or ID
+   * @param search The name or ID of the player to search for
+   * @returns A promise that resolves to the player data
+   */
+  public async getPlayer(search: string): Promise<ApiResponse<ApiPlayerSearchResponse>> {
+    const response = await this.apiFetch<ApiPlayerSearchResponse>(`${ApiRestService.apiUrl}players/${search}`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the alliance data from the API by their name or ID
+   * @param allianceId The ID of the alliance to search for
+   * @returns A promise that resolves to the alliance data
+   */
+  public async getAllianceStats(
+    allianceId: number,
+    playerNameForDistance: string,
+    kingdomId: number = 0,
+  ): Promise<ApiResponse<ApiAlliancePlayersSearchResponse>> {
+    const distanceQuery = playerNameForDistance
+      ? `?playerNameForDistance=${playerNameForDistance}&kingdomId=${kingdomId}`
+      : '';
+    const response = await this.apiFetch<ApiAlliancePlayersSearchResponse>(
+      `${ApiRestService.apiUrl}alliances/id/${allianceId}${distanceQuery}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the player stats pulsed for a specific alliance
+   * @param allianceId The ID of the alliance to search for
+   * @returns A promise that resolves to the player stats pulsed data
+   */
+  public async getPlayerStatsPulsedForAlliance(allianceId: number): Promise<ApiResponse<ApiAllianceHealthResponse>> {
+    const response = await this.apiFetch<ApiAllianceHealthResponse>(
+      `${ApiRestService.apiUrl}statistics/alliance/${allianceId}/pulse`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the update players data from the API by their alliance ID
+   * @param allianceId The ID of the alliance to search for
+   * @returns A promise that resolves to the update players data
+   */
+  public async getUpdatePlayersAlliance(allianceId: number): Promise<ApiResponse<ApiUpdateAlliancePlayersResponse>> {
+    const response = await this.apiFetch<ApiUpdateAlliancePlayersResponse>(
+      `${ApiRestService.apiUrl}updates/alliances/${allianceId}/players`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the outer realms list from the API
+   * @returns A promise that resolves to the outer realms list data
+   */
+  public async getEventList(page: number, filterByEventType?: string): Promise<ApiResponse<ApiEventlist>> {
+    const typeQuery = filterByEventType ? `&type=${filterByEventType}` : '';
+    const response = await this.apiFetch<ApiEventlist>(`${ApiRestService.apiUrl}events/list?page=${page}${typeQuery}`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the outer realms data by its ID
+   * @param id The ID of the outer realm event
+   * @returns A promise that resolves to the outer realms data
+   */
+  public async getEventDataById(eventName: string, id: number): Promise<ApiResponse<ApiOuterRealmEvent>> {
+    const response = await this.apiFetch<ApiOuterRealmEvent>(`${ApiRestService.apiUrl}events/${eventName}/${id}/data`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the ranking statistics for a player by their ID
+   * @param playerId The ID of the player to retrieve ranking stats for
+   * @returns A promise that resolves to the ranking stats data
+   */
+  public async getRankingStatsByPlayerId(playerId: number): Promise<ApiResponse<ApiRankingStatsPlayer>> {
+    const response = await this.apiFetch<ApiRankingStatsPlayer>(
+      `${ApiRestService.apiUrl}statistics/ranking/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the castle player data by their name
+   * @param playerName The name of the player to search for
+   * @returns A promise that resolves to the castle player data
+   */
+  public async getCastlePlayerDataByName(playerName: string): Promise<ApiResponse<ApiPlayerCastleNameResponse[]>> {
+    const response = await this.apiFetch<ApiPlayerCastleNameResponse[]>(
+      `${ApiRestService.apiUrl}castle/search/${playerName}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getCastlePlayerDataByPlayerId(playerId: number): Promise<ApiResponse<ApiPlayerCastleNameResponse[]>> {
+    const response = await this.apiFetch<ApiPlayerCastleNameResponse[]>(
+      `${ApiRestService.apiUrl}castle/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getRandomCastles(): Promise<ApiResponse<ApiPlayerCastleNameResponse[]>> {
+    const response = await this.apiFetch<ApiPlayerCastleNameResponse[]>(`${ApiRestService.apiUrl}castle/random`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the castle player data by their castle ID
+   * @param castleId The ID of the castle to search for
+   * @param kingdomId The ID of the kingdom to search for
+   * @returns A promise that resolves to the castle player data
+   */
+  public async getCastlePlayerDataByCastleID(
+    castleId: number,
+    kingdomId: number,
+  ): Promise<ApiResponse<ApiPlayerCastleDataResponse>> {
+    const response = await this.apiFetch<ApiPlayerCastleDataResponse>(
+      `${ApiRestService.apiUrl}castle/analysis/${castleId}?kingdomId=${kingdomId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the grand tournament dates from the API
+   * @returns A promise that resolves to the grand tournament dates data
+   */
+  public async getGrandTournamentDates(): Promise<ApiResponse<ApiGrandTournamentDatesResponse>> {
+    const response = await this.apiFetch<ApiGrandTournamentDatesResponse>(
+      `${ApiRestService.apiUrl}grand-tournament/dates`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the grand tournament alliances from the API
+   * @param date The date of the grand tournament
+   * @param division The division ID of the grand tournament
+   * @param subdivision The subdivision ID of the grand tournament
+   * @param page The page number to fetch
+   * @returns A promise that resolves to the grand tournament alliances data
+   */
+  public async getGrandTournamentAlliances(
+    date: string,
+    division: number,
+    page: number,
+    subdivision?: number,
+  ): Promise<ApiResponse<ApiGrandTournamentAlliancesResponse>> {
+    const subDivisionParameter = subdivision ? `&subdivision_id=${subdivision}` : '';
+    const response = await this.apiFetch<ApiGrandTournamentAlliancesResponse>(
+      `${ApiRestService.apiUrl}grand-tournament/alliances?date=${date}&division_id=${division}${subDivisionParameter}&page=${page}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Search for grand tournament alliances by name
+   * @param date The date of the grand tournament
+   * @param search The name of the alliance to search for
+   * @param page The page number to fetch
+   * @returns A promise that resolves to the grand tournament alliances search data
+   */
+  public async getGrandTournamentSearchAlliance(
+    date: string,
+    search: string,
+    page: number,
+  ): Promise<ApiResponse<ApiGrandTournamentAlliancesSearchResponse>> {
+    const response = await this.apiFetch<ApiGrandTournamentAlliancesSearchResponse>(
+      `${ApiRestService.apiUrl}grand-tournament/search?date=${date}&alliance_name=${search}&page=${page}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the grand tournament alliance analysis by alliance ID and event ID
+   * @param allianceId The ID of the alliance to analyze
+   * @param eventId The ID of the event to analyze
+   * @returns A promise that resolves to the grand tournament alliance analysis data
+   */
+  public async getGrandTournamentAllianceAnalysis(
+    allianceId: number,
+    eventId: number,
+  ): Promise<ApiResponse<ApiGrandTournamenAllianceAnalysisResponse>> {
+    const response = await this.apiFetch<ApiGrandTournamenAllianceAnalysisResponse>(
+      `${ApiRestService.apiUrl}grand-tournament/alliance/${allianceId}/${eventId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getEventThresholds(
+    event: ApiEventThresholdSlug,
+    server?: string,
+  ): Promise<ApiResponse<ApiEventThresholdsResponse>> {
+    const options = server ? { headers: { 'gge-server': server } } : undefined;
+    return this.apiFetch<ApiEventThresholdsResponse>(
+      `${ApiRestService.apiUrl}event-thresholds/${event}`,
+      true,
+      options,
+    );
+  }
+
+  public async getRiftRaidDates(): Promise<ApiResponse<ApiRiftRaidDatesResponse>> {
+    return this.apiFetch<ApiRiftRaidDatesResponse>(`${ApiRestService.apiUrl}rift-raid/dates`);
+  }
+
+  public async getRiftRaidAlliances(
+    date: string,
+    division: number,
+    page: number,
+    subdivision?: number,
+  ): Promise<ApiResponse<ApiRiftRaidAlliancesResponse>> {
+    const parameters = new URLSearchParams({ date, division_id: String(division), page: String(page) });
+    if (subdivision) parameters.set('subdivision_id', String(subdivision));
+    return this.apiFetch<ApiRiftRaidAlliancesResponse>(`${ApiRestService.apiUrl}rift-raid/alliances?${parameters}`);
+  }
+
+  public async searchRiftRaidAlliances(
+    date: string,
+    allianceName: string,
+    page: number,
+  ): Promise<ApiResponse<ApiRiftRaidSearchResponse>> {
+    const parameters = new URLSearchParams({ date, alliance_name: allianceName, page: String(page) });
+    return this.apiFetch<ApiRiftRaidSearchResponse>(`${ApiRestService.apiUrl}rift-raid/search?${parameters}`);
+  }
+
+  public async getRiftRaidAllianceAnalysis(
+    allianceId: number,
+    eventId: number,
+  ): Promise<ApiResponse<ApiRiftRaidAllianceAnalysisResponse>> {
+    return this.apiFetch<ApiRiftRaidAllianceAnalysisResponse>(
+      `${ApiRestService.apiUrl}rift-raid/alliance/${allianceId}/${eventId}`,
+    );
+  }
+
+  public async getAllianceTournamentStandings(
+    allianceId: number,
+  ): Promise<ApiResponse<ApiAllianceTournamentStandingsResponse>> {
+    return this.apiFetch<ApiAllianceTournamentStandingsResponse>(
+      `${ApiRestService.apiUrl}alliances/${allianceId}/tournaments`,
+    );
+  }
+
+  /**
+   * Get the events for a player by their ID, filtered by event type
+   * @param playerId The ID of the player to retrieve events for
+   * @param event Optional parameter to filter events by type (e.g., 'outer-realms', 'beyond-the-horizon', 'all')
+   * @returns A promise that resolves to the events data for the specified player and event type
+   */
+  public async getEventsByPlayerId(
+    playerId: number,
+    event?: 'outer-realms' | 'beyond-the-horizon' | 'all',
+  ): Promise<ApiResponse<ApiEventsByPlayerIdResponse>> {
+    const response = await this.apiFetch<ApiEventsByPlayerIdResponse>(
+      `${ApiRestService.apiUrl}events/player/${playerId}` + (event ? `?event=${event}` : ''),
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the players of an outer realm event by its ID
+   * @param id The ID of the outer realm event
+   * @param page The page number to fetch
+   * @param playerNameFilter Optional filter for player names
+   * @returns A promise that resolves to the outer realm players data
+   */
+  public async getEventPlayersById(
+    eventName: string,
+    id: number,
+    page: number,
+    playerNameFilter?: string | null,
+    serverFilter?: string | null,
+  ): Promise<ApiResponse<ApiOuterRealmPlayers>> {
+    const response = await this.apiFetch<ApiOuterRealmPlayers>(
+      `${ApiRestService.apiUrl}events/${eventName}/${id}/players?page=${page}` +
+        (playerNameFilter ? `&player_name=${playerNameFilter}` : '') +
+        (serverFilter ? `&server=${serverFilter}` : ''),
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getLiveRankingOuterRealmsSpecificPlayer(
+    playerId: number,
+  ): Promise<ApiResponse<ApiLiveRankingSpecificPlayerResponse>> {
+    const response = await this.apiFetch<ApiLiveRankingSpecificPlayerResponse>(
+      `${ApiRestService.apiUrl}live-ranking/outer-realms/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getLiveRankingOuterRealms(
+    page: number,
+    filters: LiveRankingFilters = {},
+  ): Promise<ApiResponse<ApiLiveRankingResponse>> {
+    const parameters = this.liveRankingParameters(filters);
+    parameters.set('page', String(page));
+    return this.apiFetch<ApiLiveRankingResponse>(`${ApiRestService.apiUrl}live-ranking/outer-realms?${parameters}`);
+  }
+
+  public getLiveRankingOuterRealmsExportUrl(format: LiveRankingExportFormat, filters: LiveRankingFilters = {}): string {
+    const parameters = this.liveRankingParameters(filters);
+    parameters.set('format', format);
+    return `${ApiRestService.apiUrl}live-ranking/outer-realms/export?${parameters}`;
+  }
+
+  public async getWoaEventList(page: number): Promise<ApiResponse<ApiWoaEventListResponse>> {
+    const response = await this.apiFetch<ApiWoaEventListResponse>(`${ApiRestService.apiUrl}woa/events?page=${page}`);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getWoaEventDataById(
+    eventId: string,
+    page: number,
+    player_name?: string,
+    alliance_name?: string,
+  ): Promise<ApiResponse<ApiWoaEventDataResponse>> {
+    const response = await this.apiFetch<ApiWoaEventDataResponse>(
+      `${ApiRestService.apiUrl}woa/events/id/${eventId}?page=${page}` +
+        (player_name ? `&player_name=${player_name}` : '') +
+        (alliance_name ? `&alliance_name=${alliance_name}` : ''),
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getWoaEventDataByDate(
+    eventDate: string,
+    page: number,
+    player_name?: string,
+    alliance_name?: string,
+  ): Promise<ApiResponse<ApiWoaEventDataResponse>> {
+    const response = await this.apiFetch<ApiWoaEventDataResponse>(
+      `${ApiRestService.apiUrl}woa/events/date/${eventDate}?page=${page}` +
+        (player_name ? `&player_name=${player_name}` : '') +
+        (alliance_name ? `&alliance_name=${alliance_name}` : ''),
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getWoaEventDataByPlayerId(playerId: number): Promise<ApiResponse<ApiWoaEventPlayerDataResponse>> {
+    const response = await this.apiFetch<ApiWoaEventPlayerDataResponse>(
+      `${ApiRestService.apiUrl}woa/events/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getStormyIslesLeaderboard(
+    page: number,
+    orderBy?: string,
+    orderDirection?: string,
+    playerName?: string,
+    allianceName?: string,
+    filters?: Record<string, string | number>,
+  ): Promise<ApiResponse<ApiStormyIslesLeaderboardResponse>> {
+    let request = `${ApiRestService.apiUrl}stormy-isles?size=10&page=${page}`;
+    if (orderBy !== undefined) request += `&order_by=${orderBy}`;
+    if (orderDirection !== undefined) request += `&order_dir=${orderDirection}`;
+    if (playerName) request += `&player_name=${encodeURIComponent(playerName)}`;
+    if (allianceName) request += `&alliance_name=${encodeURIComponent(allianceName)}`;
+    if (filters) {
+      for (const key in filters) {
+        if (filters[key] !== undefined) {
+          request += `&${key}=${encodeURIComponent(filters[key])}`;
+        }
+      }
+    }
+    const response = await this.apiFetch<ApiStormyIslesLeaderboardResponse>(request);
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getAquamarinePointsByPlayerId(playerId: number): Promise<ApiResponse<ApiAquamarinePlayerResponse>> {
+    const response = await this.apiFetch<ApiAquamarinePlayerResponse>(
+      `${ApiRestService.apiUrl}aquamarine/player/${playerId}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  /**
+   * Get the alliance by name from the API
+   * @param allianceName The name of the alliance to search for
+   * @returns A promise that resolves to the alliance data
+   */
+  public async getAllianceByName(allianceName: string): Promise<ApiResponse<ApiAllianceSearchResponse>> {
+    const response = await this.apiFetch<ApiAllianceSearchResponse>(
+      `${ApiRestService.apiUrl}alliances/name/${allianceName}`,
+    );
+    if (!response.success) return response;
+    return { success: true, data: response.data };
+  }
+
+  public async getPlayerProfile(playerId: string, _include: string): Promise<ApiResponse<ApiPlayerProfile>> {
+    try {
+      return { success: true, data: await this.supabaseApi.playerProfile(playerId) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getAllianceProfile(allianceId: string, include = 'none'): Promise<ApiResponse<ApiAllianceProfile>> {
+    return this.apiFetch<ApiAllianceProfile>(
+      `${ApiRestService.apiUrl}alliances/${allianceId}/profile?include=${include}`,
+    );
+  }
+
+  public async getPlayersBulk(ids: string[]): Promise<ApiResponse<ApiBulkPlayersResponse>> {
+    return this.apiFetch<ApiBulkPlayersResponse>(`${ApiRestService.apiUrl}bulk/players`, true, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+  }
+
+  public async getAlliancesBulk(ids: string[]): Promise<ApiResponse<ApiBulkAlliancesResponse>> {
+    return this.apiFetch<ApiBulkAlliancesResponse>(`${ApiRestService.apiUrl}bulk/alliances`, true, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids }),
+    });
+  }
+
+  public async getPlayerSuggestions(query: string): Promise<ApiResponse<ApiSuggestionsResponse<ApiPlayerSuggestion>>> {
+    try {
+      return { success: true, data: await this.supabaseApi.playerSuggestions(query) };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getPlayerNameSuggestions(
+    query: string,
+  ): Promise<ApiResponse<ApiSuggestionsResponse<Pick<ApiPlayerSuggestion, 'name'>>>> {
+    try {
+      const data = await this.supabaseApi.playerSuggestions(query);
+      return { success: true, data: { suggestions: data.suggestions.map((suggestion) => ({ name: suggestion.name })) } };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  public async getAllianceSuggestions(
+    query: string,
+  ): Promise<ApiResponse<ApiSuggestionsResponse<ApiAllianceSuggestion>>> {
+    return this.apiFetch<ApiSuggestionsResponse<ApiAllianceSuggestion>>(
+      `${ApiRestService.apiUrl}alliances/search?query=${encodeURIComponent(query)}`,
+    );
+  }
+
+  private updateResponseMs(requestStartMs: number, requestEndMs: number): void {
+    this.responseMs = requestEndMs - requestStartMs;
+  }
+
+  private liveRankingParameters(filters: LiveRankingFilters): URLSearchParams {
+    const parameters = new URLSearchParams();
+    const set = (name: string, value: string | number | undefined): void => {
+      if (value !== undefined && value !== '') parameters.set(name, String(value));
+    };
+    set('player_name', filters.playerName);
+    set('server', filters.servers?.join(','));
+    set('min_level', filters.minLevel);
+    set('max_level', filters.maxLevel);
+    set('min_might', filters.minMight);
+    set('max_might', filters.maxMight);
+    set('min_score', filters.minScore);
+    set('max_score', filters.maxScore);
+    set('min_rank', filters.minRank);
+    set('max_rank', filters.maxRank);
+    set('active', filters.activeOnly ? 1 : undefined);
+    set('movement', filters.movement);
+    set('near', filters.near ? `${filters.near.x},${filters.near.y}` : undefined);
+    set('radius', filters.near?.radius);
+    set('order_by', filters.orderBy);
+    set('order_dir', filters.orderDir);
+    return parameters;
+  }
+}

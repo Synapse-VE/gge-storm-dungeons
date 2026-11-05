@@ -1,0 +1,254 @@
+import { DatePipe, NgClass } from '@angular/common';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  inject,
+  Injector,
+  OnDestroy,
+} from '@angular/core';
+import { GenericComponent } from '@ggetracker-components/generic/generic.component';
+import { SearchFormComponent } from '@ggetracker-components/search-form/search-form.component';
+import { TableComponent } from '@ggetracker-components/table/table.component';
+import { ApiRenames, ApiRenamesResponse, ErrorType, Rename, SearchType } from '@ggetracker-interfaces/empire-ranking';
+import { FormatNumberPipe } from '@ggetracker-pipes/format-number.pipe';
+import { TopBarService } from '@ggetracker-services/topbar.service';
+import { RouterLink } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
+import { RenamesSwitcherComponent } from './renames-switcher/renames-switcher.component';
+import { CURRENT } from './rename.token';
+
+@Component({
+  selector: 'app-renames',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgClass, RouterLink, SearchFormComponent, TableComponent, FormatNumberPipe, DatePipe, TranslateModule],
+  standalone: true,
+  templateUrl: './renames.component.html',
+  styleUrl: './renames.component.css',
+})
+export class RenamesComponent extends GenericComponent implements AfterViewInit, OnDestroy {
+  public search = '';
+  public currentViewType: 'players' | 'alliances' | undefined = undefined;
+  public current = inject(CURRENT, { optional: true });
+  public pageSize = 15;
+  public searchType: SearchType = 'player';
+  public responseTime = 0;
+  public maxPage: number | null = null;
+  public page = 1;
+  public headers: [string, string, string, boolean][] = [];
+  public renames: Rename[] = [];
+  public formFilters = {
+    castleType: null,
+    movementType: null,
+    isFiltered: false,
+  };
+  private readonly topBarService = inject(TopBarService);
+  private readonly cdr = inject(ChangeDetectorRef);
+
+  constructor(private readonly injector: Injector) {
+    super();
+    this.isInLoading = true;
+    this.route.paramMap.subscribe((parameters) => {
+      this.isInLoading = true;
+      this.currentViewType = (parameters.get('type') as 'players' | 'alliances') || 'players';
+      if (this.currentViewType === 'alliances') {
+        this.headers = [
+          ['oldPlayerName', 'Ancien nom', '', true],
+          ['updatedPlayerName', 'Nouveau nom', '', true],
+          ['date', 'Date de changement', '', true],
+        ];
+      } else if (this.currentViewType === 'players') {
+        this.headers = [
+          ['oldPlayerName', 'Ancien pseudonyme', '', true],
+          ['updatedPlayerName', 'Nouveau pseudonyme', '', true],
+          ['pp', 'Points de puissance', '/assets/pp1.png', true],
+          ['allianceName', 'Alliance', '/assets/min-alliance.png', true],
+          ['date', 'Date de changement', '', true],
+        ];
+      }
+      this.init();
+    });
+  }
+
+  public ngAfterViewInit(): void {
+    const viewType = this.currentViewType || 'players';
+    const injector = Injector.create({
+      providers: [{ provide: CURRENT, useValue: viewType }],
+      parent: this.injector,
+    });
+    this.topBarService.attach(RenamesSwitcherComponent, injector);
+  }
+
+  public ngOnDestroy(): void {
+    this.topBarService.clear();
+  }
+
+  public applyFilters(): void {
+    this.formFilters.isFiltered = true;
+    this.init();
+  }
+
+  public async nextPage(): Promise<void> {
+    if (this.isInLoading) return;
+    this.isInLoading = true;
+    this.page++;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const renames = data.data;
+    this.renames = this.mapMovementsFromApi(renames, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.updateViewStatus(false);
+  }
+
+  public async previousPage(): Promise<void> {
+    if (this.isInLoading) return;
+    this.isInLoading = true;
+    this.page--;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const renames = data.data;
+    this.renames = this.mapMovementsFromApi(renames, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.updateViewStatus(false);
+  }
+
+  public async clickOnAlliance(allianceName: string | null): Promise<void> {
+    if (allianceName === null || (this.searchType === 'alliance' && this.search === allianceName)) return;
+    this.search = allianceName;
+    void this.searchAlliance(allianceName);
+  }
+
+  public navigateToType(type: 'players' | 'alliances'): void {
+    if (type !== this.currentViewType) {
+      void this.router.navigate(['/renames', type]);
+    }
+  }
+
+  public async searchAlliance(allianceName: string): Promise<void> {
+    this.search = allianceName;
+    if (this.isInLoading) return;
+    if (this.search === '') {
+      void this.navigateTo(1);
+      return;
+    }
+    this.isInLoading = true;
+    try {
+      this.page = 1;
+      this.searchType = 'alliance';
+      const data = await this.getGenericData();
+      this.responseTime = data.response;
+      const renames = data.data;
+      this.renames = this.mapMovementsFromApi(renames, (index: number) => index + 1);
+      this.updateViewStatus(false);
+    } catch {
+      this.toastService.add(ErrorType.NO_ALLIANCE_FOUND, 5000);
+      this.updateViewStatus(false);
+    }
+  }
+
+  public async searchPlayer(playerName: string): Promise<void> {
+    this.search = playerName;
+    if (this.isInLoading) return;
+    this.searchType = 'player';
+    if (this.search === '') {
+      void this.navigateTo(1);
+      this.updateViewStatus(false);
+      return;
+    }
+    this.init();
+  }
+
+  public async navigateTo(page: number): Promise<void> {
+    if (this.isInLoading) return;
+    this.updateViewStatus(true);
+    this.page = page;
+    const renames = await this.getGenericData();
+    this.responseTime = renames.response;
+    this.renames = this.mapMovementsFromApi(
+      renames.data,
+      (index: number) => (this.page - 1) * this.pageSize + index + 1,
+    );
+    this.updateViewStatus(false);
+  }
+
+  public visiblePages(): number[] {
+    if (!this.maxPage) return [];
+    let pageCutLow = Math.max(1, this.page - 1);
+    let pageCutHigh = Math.min(this.maxPage, this.page + 1);
+    if (this.page === 1) pageCutHigh += 2;
+    if (this.page === 2) pageCutHigh += 1;
+    if (this.page === this.maxPage) pageCutLow -= 2;
+    if (this.page === this.maxPage - 1) pageCutLow -= 1;
+    return Array.from({ length: pageCutHigh - pageCutLow + 1 }, (_, index) => pageCutLow + index);
+  }
+
+  public allPages(): number[] {
+    return Array.from({ length: this.maxPage || 1 }, (_, index) => index + 1);
+  }
+
+  private mapMovementsFromApi(renames: ApiRenamesResponse, rankFunction: (rank: number) => number): Rename[] {
+    if (renames.pagination) {
+      this.maxPage = renames.pagination.total_pages;
+    } else {
+      this.maxPage = 1;
+    }
+    return renames.renames.map((movement, index) => {
+      return {
+        rank: rankFunction(index),
+        subjectLink: this.subjectLinkOf(movement),
+        player: movement.player_name,
+        alliance: movement.alliance_name,
+        date: this.formatMovementDate(movement.date),
+        might: movement.player_might,
+        updatedPlayerName: movement.new_player_name,
+        oldPlayerName: movement.old_player_name,
+      };
+    });
+  }
+
+  private subjectLinkOf(rename: ApiRenames): string[] | null {
+    if (this.currentViewType === 'alliances') return rename.alliance_id ? ['/', 'alliance', rename.alliance_id] : null;
+    return rename.player_id ? ['/', 'player', rename.player_id] : null;
+  }
+
+  /**
+   * Format the movement date to remove minutes and seconds to avoid timezone issues and only keep the date and hour
+   * @param date The date in ISO format (e.g. 2026-01-01T10:11:10.944Z)
+   * @returns The date in ISO format with 00:00 for minutes and seconds to avoid timezone issues (e.g. 2026-01-01T10:00:00.000Z)
+   */
+  private formatMovementDate(date: string): string {
+    const dateObject = new Date(date);
+    dateObject.setUTCMinutes(0, 0, 0);
+    return dateObject.toISOString();
+  }
+
+  private updateViewStatus(state: boolean): void {
+    this.isInLoading = state;
+    this.cdr.markForCheck();
+  }
+
+  private async getGenericData(): Promise<{ data: ApiRenamesResponse; response: number }> {
+    return await this.apiRestService.getGenericData(
+      this.apiRestService.getRenames.bind(this.apiRestService),
+      this.page,
+      this.search,
+      this.searchType,
+      this.currentViewType,
+    );
+  }
+
+  private init(): void {
+    try {
+      this.updateViewStatus(true);
+      this.page = 1;
+      void this.getGenericData().then((renames) => {
+        this.responseTime = renames.response;
+        this.maxPage = renames.data.pagination.total_pages;
+        this.renames = this.mapMovementsFromApi(renames.data, (index: number) => index + 1);
+        this.updateViewStatus(false);
+      });
+    } catch {
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 5000);
+      this.updateViewStatus(false);
+    }
+  }
+}

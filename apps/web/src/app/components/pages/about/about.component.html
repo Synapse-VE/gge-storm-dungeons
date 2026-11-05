@@ -1,0 +1,169 @@
+<div class="container about-container my-5 pb-0">
+  <ng-container *ngTemplateOutlet="apiLink; context: { message: 'API gge-tracker.com' }"></ng-container>
+  <div class="text-end mb-2 release-note">
+    <a routerLink="/release-notes" class="text-decoration-none">
+      <i class="fa-solid fa-file-lines" style="color: #007bff;"></i>
+      &nbsp;{{ 'about.release-notes' | translate }}
+    </a>
+  </div>
+  <h1 class="text-center mb-4 mt-3">{{ 'about.title' | translate }}</h1>
+  <div class="section">
+    <p [innerHTML]="translatedIntro1"></p>
+    <p>{{ 'about.intro-2' | translate }}</p>
+    <p>{{ 'about.intro-3' | translate }}</p>
+    <p>{{ 'about.intro-4' | translate }}</p>
+    <ng-container *ngTemplateOutlet="contact"></ng-container>
+  </div>
+  <div class="section">
+    <p>{{ 'about.legal-intro' | translate }}</p>
+    <div class="integration-actions">
+      <a class="integration-action text-decoration-none" routerLink="/legal">{{ 'legal.title' | translate }}</a>
+      <a class="integration-action text-decoration-none" routerLink="/privacy">{{ 'privacy.title' | translate }}</a>
+    </div>
+  </div>
+  <section id="integrations" class="section integrations" aria-labelledby="integrations-title">
+    <h2 id="integrations-title" class="integrations-title">{{ 'about.integrations-title' | translate }}</h2>
+    <p>{{ 'about.integrations-intro' | translate }}</p>
+    <div class="integrations-grid">
+      <article class="integration-card">
+        <h3 class="integration-name">
+          <i class="fa-brands fa-discord" aria-hidden="true"></i>
+          GGE Assistant
+        </h3>
+        <p>{{ 'about.integrations-assistant' | translate }}</p>
+        <div class="integration-actions">
+          <a class="integration-action integration-action--primary text-decoration-none"
+            href="https://top.gg/bot/1472309793065533493" target="_blank" rel="noopener">
+            {{ 'about.integrations-assistant-add' | translate }}
+          </a>
+          <a class="integration-action text-decoration-none" href="https://discord.gg/zrrhxp6wDj" target="_blank"
+            rel="noopener">
+            {{ 'about.integrations-assistant-support' | translate }}
+          </a>
+        </div>
+      </article>
+      <article class="integration-card">
+        <h3 class="integration-name">
+          <i class="fa-brands fa-chrome" aria-hidden="true"></i>
+          GGE WebSocket Studio
+        </h3>
+        <p>{{ 'about.integrations-ws-studio' | translate }}</p>
+        <div class="integration-actions">
+          <a class="integration-action integration-action--primary text-decoration-none"
+            href="https://chromewebstore.google.com/detail/gge-websocket-studio/deaaangkjfdcpegbebpdhkiknaniomeg"
+            target="_blank" rel="noopener">
+            {{ 'about.integrations-ws-studio-add' | translate }}
+          </a>
+        </div>
+      </article>
+      <article class="integration-card">
+        <h3 class="integration-name">
+          <i class="fa-solid fa-code" aria-hidden="true"></i>
+          {{ 'about.integrations-build-title' | translate }}
+        </h3>
+        <p>{{ 'about.integrations-build' | translate }}</p>
+        <ul class="integration-facts">
+          <li>{{ 'about.integrations-key' | translate }}</li>
+          <li>{{ 'about.integrations-links' | translate }} <code>?utm_source=…</code></li>
+          <li>{{ 'about.integrations-cards' | translate }}</li>
+        </ul>
+        <div class="integration-actions">
+          <a class="integration-action integration-action--primary text-decoration-none"
+            href="https://docs.gge-tracker.com" target="_blank" rel="noopener">
+            {{ 'about.integrations-docs' | translate }}
+          </a>
+          <a class="integration-action text-decoration-none" href="https://discord.gg/eb6WSHQqYh" target="_blank"
+            rel="noopener">
+            {{ 'about.integrations-request-key' | translate }}
+          </a>
+        </div>
+      </article>
+      <article class="integration-card">
+        <h3 class="integration-name">
+          <i class="fa-solid fa-star" aria-hidden="true"></i>
+          {{ 'about.integrations-featured-title' | translate }}
+        </h3>
+        <p>{{ 'about.integrations-featured' | translate }}</p>
+        <div class="integration-actions">
+          <a class="integration-action integration-action--primary text-decoration-none"
+            href="https://discord.gg/eb6WSHQqYh" target="_blank" rel="noopener">
+            {{ 'about.integrations-featured-contact' | translate }}
+          </a>
+        </div>
+      </article>
+    </div>
+  </section>
+  <div class="contrib-heading mt-5">
+    <h1 class="text-center mb-0">{{ 'about.contributors-title' | translate }}</h1>
+    @if (contribs.length) {
+      <span class="contrib-count">{{ contribs.length }}</span>
+    }
+  </div>
+  <p class="contrib-thanks text-center">
+    {{ 'about.contributors-thanks' | translate }}
+  </p>
+  <ng-container *ngTemplateOutlet="contributors"></ng-container>
+  <div class="footer mb-2 text-center">
+    <p style="font-size: 0.7rem">&copy; {{ currentYear }} gge-tracker.com</p>
+  </div>
+</div>
+
+<ng-template #contributors>
+  @if (lanes.length) {
+    <button type="button" class="roll button-reset" [class.roll-paused]="rollPaused" (click)="toggleRoll()">
+      @for (lane of lanes; track $index) {
+        <div class="lane">
+          <div
+            class="lane-track"
+            [class.lane-track-reverse]="$odd"
+            [style.animationDuration.s]="lane.duration"
+            [style.--lane-copies]="lane.copies.length"
+          >
+            @for (copy of lane.copies; track copy) {
+              @for (contrib of lane.items; track contrib.name) {
+                <div class="seal" [attr.aria-hidden]="copy > 0 ? 'true' : null">
+                  <span class="seal-medal">
+                    <span class="seal-initial">{{ initial(contrib) }}</span>
+                    <img class="seal-flag" [src]="flagUrl(contrib.server)" [alt]="contrib.server" loading="lazy" />
+                  </span>
+                  <span class="seal-text">
+                    <span class="seal-name">{{ contrib.name }}</span>
+                    <span class="seal-server">{{ contrib.server }}</span>
+                  </span>
+                </div>
+              }
+            }
+          </div>
+        </div>
+      }
+    </button>
+  }
+</ng-template>
+
+<ng-template #apiLink let-message="message">
+  <div class="text-end mb-2">
+    <a href="https://docs.gge-tracker.com" target="_blank" class="text-decoration-none">
+      <i class="fa-solid fa-code" style="color: #007bff;"></i>
+      &nbsp;{{ message }}
+    </a>
+  </div>
+</ng-template>
+
+<ng-template #heart>
+  <span style="color: #ff00009e;">
+    <i class="fa-solid fa-heart"></i>
+  </span>
+</ng-template>
+
+<ng-template #contact>
+  <ul class="list-unstyled">
+    <li>
+      <i class="fa-brands fa-discord" style="color: #7289da;"></i>
+      <span style="color: #7289da;">&nbsp;Discord: <a target="_blank" href="https://discord.gg/eb6WSHQqYh" style="color: #7289da;">https://discord.gg/eb6WSHQqYh</a></span>
+    </li>
+    <li>
+      <i class="fa-solid fa-gavel" style="color: #6c757d;"></i>
+      <span style="color: #6c757d;">&nbsp;{{ 'about.contact-legal' | translate }} <a href="mailto:contact@gge-tracker.com">contact&#64;gge-tracker.com</a></span>
+    </li>
+  </ul>
+</ng-template>

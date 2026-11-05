@@ -1,0 +1,114 @@
+<div class="row" id="table-component">
+  @if (mobileSortHeaders().length > 0) {
+    <div class="col-12 mobile-sort pb-2" role="toolbar" [attr.aria-label]="'Trier' | translate">
+      @for (header of mobileSortHeaders(); track header[0]) {
+        <button type="button" class="sort-chip" [class.sort-chip--on]="sort() === header[0]"
+          [attr.aria-pressed]="sort() === header[0]" (click)="sortAlliances(header[0])">
+          @if (header[2]) {
+            <img [src]="header[2]" alt="" height="18" />
+          }
+          <span>{{ header[1] | translate }}</span>
+          @if (sort() === header[0]) {
+            <lucide-icon class="lucide-icon" [img]="reverse() ? ChevronsDown : ChevronsUp" [size]="14"></lucide-icon>
+          }
+        </button>
+      }
+    </div>
+  }
+  <div class="col-12 overflow-auto">
+    <table class="table-custom position-relative">
+      <ng-template #sortTemplate let-currentSort="sort" let-currentReverse="reverse">
+        <span class="sort d-md-inline-block d-block">
+          @if (sort() === currentSort && !reverse()) {
+            <lucide-icon class="ms-1 lucide-icon"
+            [img]="ChevronsUp"></lucide-icon>
+          }
+          @if (sort() === currentSort && reverse()) {
+            <lucide-icon class="ms-1 lucide-icon" [img]="ChevronsDown"
+            [class.reverse]="true"></lucide-icon>
+          }
+        </span>
+      </ng-template>
+
+      <thead>
+        <tr>
+          <th scope="col">#</th>
+          @for (header of headers(); track $index) {
+            <th (click)="header[3] ?? sortAlliances(header[0])"
+              [ngClass]="{ 'pointer': !header[3] }" scope="col" tabindex="0" (keydown.enter)="header[3] ?? sortAlliances(header[0])">
+              @if (header[1] && !header[2]) {
+                <span>{{ header[1] | translate }}</span>
+              }
+              @if (header[2] && iconCaptions()) {
+                <span class="header-icon-captioned">
+                  <img [src]="header[2]" alt=""
+                    [attr.width]="headerIconSize(header[2])?.width" [attr.height]="headerIconSize(header[2])?.height ?? 41" />
+                  <span class="header-caption">{{ header[1] | translate }}</span>
+                </span>
+              } @else if (header[2]) {
+                <img [src]="header[2]" [title]="header[1] | translate" [alt]="header[1] | translate"
+                  [attr.width]="headerIconSize(header[2])?.width" [attr.height]="headerIconSize(header[2])?.height ?? 41" />
+              }
+              @if (!header[3]) {
+                <ng-container
+                *ngTemplateOutlet="sortTemplate; context: { sort: header[0], reverse: reverse }"></ng-container>
+              }
+            </th>
+          }
+        </tr>
+      </thead>
+      <tbody>
+        <ng-content></ng-content>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+@if (maxPage() > 1) {
+  <ul class="mt-2">
+    @if (page() > 1) {
+      <li class="page-item previous">
+        <button type="button" (click)="previousPage.emit()" [class.loading]="isInLoading()">{{ 'Précédent' | translate }}</button>
+      </li>
+    }
+    @if (maxPage() && maxPage() < 6) {
+      @for (p of allPages(); track p) {
+        <li [class.active]="page() === p">
+          <button type="button" (click)="navigateToPage.emit(p)" [class.loading]="isInLoading()">{{ p }}</button>
+        </li>
+      }
+    } @else {
+      @if (page() > 2) {
+        <li class="page-item">
+          <button type="button" (click)="navigateToPage.emit(1)" [class.loading]="isInLoading()">1</button>
+        </li>
+      }
+      @if (page() > 3) {
+        <li class="out-of-range">
+          <button type="button" (click)="navigateToPage.emit(page() - 2)" [class.loading]="isInLoading()">...</button>
+        </li>
+      }
+      @for (p of visiblePages(); track p) {
+        <li [class.active]="page() === p">
+          <button type="button" (click)="navigateToPage.emit(p)" [class.loading]="isInLoading()">{{ p }}</button>
+        </li>
+      }
+      @if (page() < (maxPage() - 2)) {
+        <li class="out-of-range">
+          <button type="button" (click)="navigateToPage.emit(page() + 2)" [class.loading]="isInLoading()">...</button>
+        </li>
+      }
+      @if (page() < (maxPage() - 1)) {
+        <li class="page-item">
+          <button type="button" (click)="navigateToPage.emit(maxPage())" [class.loading]="isInLoading()">{{ maxPage()
+          }}</button>
+        </li>
+      }
+    }
+    @if (maxPage() && page() < maxPage()) {
+      <li class="page-item next">
+        <button type="button" (click)="nextPage.emit()" [class.loading]="isInLoading()">{{ 'Suivant' | translate }}</button>
+      </li>
+    }
+  </ul>
+}

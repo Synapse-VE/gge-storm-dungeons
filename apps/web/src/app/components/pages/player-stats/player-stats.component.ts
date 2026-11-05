@@ -1,0 +1,2541 @@
+import { DatePipe, NgClass, NgStyle, NgTemplateOutlet } from '@angular/common';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  inject,
+  OnInit,
+  QueryList,
+  viewChild,
+  ViewChildren,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { GenericComponent } from '@ggetracker-components/generic/generic.component';
+import {
+  AlliancesUpdates,
+  ApiAllianceUpdates,
+  ApiAllianceUpdatesByPlayerId,
+  ApiAquamarineMetric,
+  ApiAquamarineSnapshot,
+  ApiGenericData,
+  ApiPlayerEventOccurrence,
+  ApiPlayerStatsSummary,
+  ApiPlayerStatsSummaryEvent,
+  ApiPlayerStatsType,
+  ApiPlayerUpdatesByPlayerId,
+  ApiRankingStatsPlayer,
+  ApiResponse,
+  ApiWoaEventPlayerAggregates,
+  ApiWoaEventPlayerCoverage,
+  CastleQuantity,
+  CastleType,
+  ChartOptions,
+  ErrorType,
+  EventStatsData,
+  EventGenericVariation,
+  EventType,
+  IRankingStatsPlayer,
+  Monument,
+  OuterEventData,
+  PlayerStatsTabs,
+  PlayersUpdates,
+  RankingFameTitle,
+  Top3EventPlayers,
+  WoaEventList,
+  WoaPlayerSummary,
+} from '@ggetracker-interfaces/empire-ranking';
+import { FormatNumberPipe } from '@ggetracker-pipes/format-number.pipe';
+import { formatThousands } from '@ggetracker-services/text-format.utilities';
+import { LevelPipe } from '@ggetracker-pipes/level.pipe';
+import { LanguageService } from '@ggetracker-services/language.service';
+import { FollowService } from '@ggetracker-services/follow.service';
+import {
+  DEFAULT_LOOT_RESET,
+  LootReset,
+  lootResetOf,
+  lootWeekEnd,
+  lootWeekStart,
+} from '@ggetracker-services/loot-reset.utilities';
+import { TranslateModule } from '@ngx-translate/core';
+import Gradient from 'javascript-color-gradient';
+import { ApexAxisChartSeries } from 'ng-apexcharts';
+import { ModalTableColumn, ModalTableComponent } from '@ggetracker-components/modal-table/modal-table.component';
+import { PlayerStatsCardComponent } from './player-stats-card/player-stats-card.component';
+import { StatsPanelComponent } from './stats-panel/stats-panel.component';
+import { AllianceHistoryComponent } from './alliance-history/alliance-history.component';
+import { combineLatest, firstValueFrom } from 'rxjs';
+import { CalendarCheck, LucideAngularModule, SquareUser } from 'lucide-angular';
+import { EventCardComponent } from '@ggetracker-pages/events/event-card/event-card.component';
+import { ShareLinkComponent } from '@ggetracker-components/share-link/share-link.component';
+import { LayeredSceneComponent } from '@ggetracker-components/layered-scene/layered-scene.component';
+
+const MS_PER_HOUR = 3_600_000;
+const HOURS_PER_WEEK = 168;
+const HOURS_PER_DAY = 24;
+// Below three recorded runs the card list already says everything a summary could
+const WOA_SUMMARY_MIN_EVENTS = 3;
+const WOA_TREND_MIN_EVENTS = 4;
+const WOA_TREND_WINDOW = 3;
+
+type FillDataState = 'idle' | 'loading' | 'loaded' | 'error';
+
+@Component({
+  selector: 'app-player-stats',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    NgClass,
+    RouterLink,
+    ShareLinkComponent,
+    LayeredSceneComponent,
+    PlayerStatsCardComponent,
+    DatePipe,
+    TranslateModule,
+    FormatNumberPipe,
+    LucideAngularModule,
+    LevelPipe,
+    NgTemplateOutlet,
+    FormsModule,
+    NgTemplateOutlet,
+    NgStyle,
+    EventCardComponent,
+    ModalTableComponent,
+    StatsPanelComponent,
+    AllianceHistoryComponent,
+  ],
+  standalone: true,
+  templateUrl: './player-stats.component.html',
+  styleUrl: './player-stats.component.css',
+})
+export class PlayerStatsComponent extends GenericComponent implements OnInit, AfterViewInit {
+  public readonly AQUAMARINE_METRIC_LABELS: Record<number, string> = {
+    100: 'Points de cargo',
+    15: "Total d'aigues-marines collectées",
+    16: 'Aigues-marines collectées dans les îles aux ressources',
+    17: 'Aigues-marines collectées dans les forts orageux',
+    18: 'Aigues-marines collectées dans les combats JcJ',
+    19: 'Aigues-marines dépensées pour des points de cargo',
+    20: 'Aigues-marines perdues en combats JcJ',
+  };
+  public readonly AQUAMARINE_ALLOWED = [15, 16, 17, 18, 19, 20, 100];
+  public readonly monthNames = [
+    'Janvier',
+    'Février',
+    'Mars',
+    'Avril',
+    'Mai',
+    'Juin',
+    'Juillet',
+    'Août',
+    'Septembre',
+    'Octobre',
+    'Novembre',
+    'Décembre',
+  ];
+  public readonly AQUAMARINE_METRIC_ICONS: Record<number, string> = {
+    15: 'fas fa-gem',
+    16: 'fas fa-water',
+    17: 'fas fa-bolt',
+    18: 'fas fa-shield-alt',
+    19: 'fas fa-coins',
+    20: 'fas fa-skull',
+    100: 'fas fa-trophy',
+  };
+  public readonly AQUAMARINE_METRIC_COLORS: Record<number, string> = {
+    15: '#1f6f68',
+    16: '#3f9a8a',
+    17: '#2f7397',
+    18: '#5b8f6f',
+    19: '#a8742a',
+    20: '#a8433a',
+    100: '#c19a2c',
+  };
+  public aquamarineSnapshotsLastUpdated?: Date;
+  public charts: Record<string, ChartOptions> = {};
+  public readonly CalendarCheck = CalendarCheck;
+  public readonly SquareUser = SquareUser;
+  public radialCharts: Record<string, ChartOptions> = {};
+  public eventDataSegments: Record<string, ApiGenericData[][]> = {};
+  public playerId?: number;
+  public outerEvents: OuterEventData[] = [];
+  public currentPlayerTitle: RankingFameTitle | null = null;
+  public currentTopXFameTitle: RankingFameTitle | null = null;
+  public nextFameTitle: RankingFameTitle | null = null;
+  public fameProgressStrokeOffset: number = 0;
+  public playerName?: string;
+  public lootReset: LootReset = DEFAULT_LOOT_RESET;
+  public allianceName?: string;
+  public allianceId?: number;
+  public fillDataState: FillDataState = 'idle';
+  public fillPlayerHistoryState: FillDataState = 'idle';
+  public activeOptionButton = '';
+  public currentSemaine?: string;
+  public isAtRisk = false;
+  public data: Record<ApiPlayerStatsType, EventGenericVariation[]> = {
+    player_event_berimond_invasion_history: [],
+    player_event_berimond_kingdom_history: [],
+    player_event_bloodcrow_history: [],
+    player_event_nomad_history: [],
+    player_event_samurai_history: [],
+    player_event_war_realms_history: [],
+    player_loot_history: [],
+    player_might_history: [],
+  };
+  public allianceUpdates: AlliancesUpdates[] | null = [];
+  public playerUpdates: PlayersUpdates[] | null = [];
+  public top3Events: Top3EventPlayers | null = null;
+  public events: number[] = [];
+  public spinnerLoadingByChart: Record<string, boolean> = {};
+  public stats: IRankingStatsPlayer | null = null;
+  public animatedStats: Partial<Record<keyof IRankingStatsPlayer, number>> = {};
+  public quantity: CastleQuantity = {
+    castle: 0,
+    outpost: 0,
+    monument: 0,
+    laboratory: 0,
+    capital: 0,
+    royalTower: 0,
+    city: 0,
+    patriarch: 0,
+  };
+  public woaHistory: WoaEventList[] = [];
+  public woaSummary: WoaPlayerSummary | null = null;
+  public monumentsList: Monument[] = [];
+  public aquamarineSnapshots: ApiAquamarineSnapshot[] = [];
+  public aquamarineLoadState: FillDataState = 'idle';
+  public aquamarineMonth = new Date().toISOString().slice(0, 7);
+  public eventsLoadState: FillDataState = 'idle';
+  public woaLoadState: FillDataState = 'idle';
+  public gloryLoadState: FillDataState = 'idle';
+  public readonly currentI18nTitleKey = 'titles.playerTitle_';
+  public tabs: { key: PlayerStatsTabs; label: string; assetIcon?: string }[] = [
+    { key: 'overview', label: "Vue d'ensemble", assetIcon: 'players.png' },
+    { key: 'loot', label: 'Points de pillage hebdomadaire', assetIcon: 'loot.png' },
+    { key: 'alliances', label: 'Alliances', assetIcon: 'alliance.png' },
+    { key: 'castles', label: 'Châteaux', assetIcon: 'tools/castles.webp' },
+    { key: 'glory', label: 'Points de gloire', assetIcon: 'glory.png' },
+    { key: 'events', label: 'Événements', assetIcon: 'tools/events.webp' },
+    { key: 'woa', label: 'Roue des richesses inimaginables', assetIcon: 'tools/woa.webp' },
+    { key: 'aquamarine', label: 'Îles orageuses', assetIcon: 'tools/aquamarine.webp' },
+  ];
+  public chartVisibles = {
+    might: false,
+    loot: false,
+    warRealms: false,
+    bloodcrow: false,
+    berimondKingdom: false,
+    nomad: false,
+    samurai: false,
+    aquamarine: false,
+  };
+  public currentTab: PlayerStatsTabs = 'overview';
+  public maxLootPointsByWeek: { week: string; points: number }[] = [];
+  public fameTitles: RankingFameTitle[] = [];
+  public fameTitlesTopX: RankingFameTitle[] = [];
+  public showAllFameTitles = false;
+  public top100Glory: { top: number; point: number }[] = [];
+  public fameProgressPercentage: number = 0;
+  public mightPeriod: 'day' | 'week' | 'month' | 'year' = 'week';
+  public eventSeriesTotalCount: Record<string, number> = {};
+  public eventSeriesExpanded: Record<string, boolean> = {};
+  public eventCharts: Record<string, Record<string, ChartOptions>> = {};
+  public eventStats: Record<string, EventStatsData> = {};
+  public eventSummary: Record<ApiPlayerStatsType, ApiPlayerStatsSummaryEvent> | null = null;
+  public eventOccurrences: Record<string, ApiPlayerEventOccurrence[]> = {};
+  public seriesState: Record<string, 'idle' | 'loading' | 'loaded' | 'empty' | 'error'> = {};
+
+  public readonly monumentsColumns: ModalTableColumn[] = [
+    { label: 'Type de patrimoine', sortKey: 'type' },
+    { label: 'Royaume', sortKey: 'kingdom' },
+    { label: 'Position', sortKey: 'position' },
+  ];
+  private readonly EVENT_SERIES_DEFAULT_LIMIT = 5;
+  private readonly EVENT_OVERLAY_VISIBLE = 3;
+
+  private readonly CHART_SOURCES: Record<string, { table: ApiPlayerStatsType; days: number }> = {
+    might: { table: ApiPlayerStatsType.might, days: 30 },
+    loot: { table: ApiPlayerStatsType.loot, days: 30 },
+    warRealms: { table: ApiPlayerStatsType.war_realms, days: 90 },
+    bloodcrow: { table: ApiPlayerStatsType.bloodcrow, days: 90 },
+    berimondKingdom: { table: ApiPlayerStatsType.berimond_kingdom, days: 90 },
+    nomad: { table: ApiPlayerStatsType.nomad, days: 90 },
+    samurai: { table: ApiPlayerStatsType.samurai, days: 90 },
+  };
+  private readonly LOOT_TAB_DAYS = 182;
+  private readonly LOOT_OVERVIEW_WEEKS = 5;
+  private readonly AQUAMARINE_HIDDEN_BY_DEFAULT = new Set([19, 20, 100]);
+  private readonly CONTINUOUS_CHARTS = new Set(['might', 'loot']);
+  private readonly WEEKLY_RESET_CHARTS = new Set(['loot']);
+  private readonly FULL_HISTORY_DAYS = 1825;
+  private seriesWindow: Partial<Record<ApiPlayerStatsType, number>> = {};
+
+  public get aquamarineSnapshotsForMonth(): ApiAquamarineSnapshot[] {
+    return this.aquamarineSnapshots.filter((s) => s.collected_at.slice(0, 7) === this.aquamarineMonth);
+  }
+
+  public get isCurrentAquamarineMonth(): boolean {
+    return this.aquamarineMonth === new Date().toISOString().slice(0, 7);
+  }
+
+  public get aquamarineHeroMetric(): ApiAquamarineMetric | undefined {
+    const snapshots = this.aquamarineSnapshotsForMonth;
+    if (snapshots.length === 0) return undefined;
+    let latest = snapshots[0];
+    for (const s of snapshots) {
+      if (s.collected_at > latest.collected_at) latest = s;
+    }
+    return latest.metrics.find((m) => m.metric_id === 15);
+  }
+
+  public get aquamarineSecondaryMetrics(): ApiAquamarineMetric[] {
+    const snapshots = this.aquamarineSnapshotsForMonth;
+    if (snapshots.length === 0) return [];
+    let latest = snapshots[0];
+    for (const s of snapshots) {
+      if (s.collected_at > latest.collected_at) latest = s;
+    }
+    const order = [100, 16, 17, 18, 19, 20];
+    return order
+      .map((id) => latest.metrics.find((m) => m.metric_id === id))
+      .filter((m): m is ApiAquamarineMetric => m !== undefined);
+  }
+
+  private animationFrames: Partial<Record<keyof IRankingStatsPlayer, number>> = {};
+  private readonly followService = inject(FollowService);
+  private readonly languageService = inject(LanguageService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly worlds = [
+    { name: 'Le Grand Empire', id: 0 },
+    { name: 'Le Glacier éternel', id: 2 },
+    { name: 'Les Sables brûlants', id: 1 },
+    { name: 'Les Pics du feu', id: 3 },
+    { name: 'Les Îles orageuses', id: 4 },
+  ];
+  private observer!: IntersectionObserver;
+  @ViewChildren('chartContainer', { read: ElementRef }) private readonly chartContainers!: QueryList<ElementRef>;
+  private readonly tabsContainer = viewChild<ElementRef<HTMLElement>>('tabsContainer');
+
+  constructor() {
+    super();
+  }
+
+  public ngAfterViewInit(): void {
+    this.observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const element = entry.target as HTMLElement;
+          const chartName = element.dataset['chart'] as keyof typeof this.chartVisibles;
+          if (chartName) {
+            this.chartVisibles[chartName] = true;
+            void this.ensureSeries(chartName);
+          }
+          this.observer.unobserve(element);
+          this.cdr.detectChanges();
+        });
+      },
+      {
+        rootMargin: '100px',
+        threshold: 0.1,
+      },
+    );
+    this.observeCharts();
+    this.chartContainers.changes.subscribe(() => {
+      this.observeCharts();
+    });
+  }
+
+  public get peaceDisabledAtInDays(): number | null {
+    if (this.stats?.peaceDisabledAt) {
+      const now = new Date();
+      const diff = this.stats.peaceDisabledAt.getTime() - now.getTime();
+      return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    }
+    return null;
+  }
+
+  public openAllianceHistory(): void {
+    this.updateTab('alliances');
+    this.tabsContainer()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  public updateTab(key: PlayerStatsTabs): void {
+    this.currentTab = key;
+    void this.router.navigate([], {
+      fragment: this.currentTab,
+    });
+  }
+
+  public formatLocalDate(iso: string): string {
+    const d = new Date(iso);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      '0',
+    )}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(
+      2,
+      '0',
+    )}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+  }
+
+  public async ensureSeries(chartName: string, days?: number): Promise<void> {
+    const source = this.CHART_SOURCES[chartName];
+    if (!source || !this.playerId) return;
+    if (this.eventSummary && this.eventSummary[source.table]?.row_count === 0) {
+      this.seriesState[chartName] = 'empty';
+      this.cdr.detectChanges();
+      return;
+    }
+    const wanted = days ?? source.days;
+    if ((this.seriesWindow[source.table] ?? 0) >= wanted || this.seriesState[chartName] === 'loading') return;
+    this.seriesState[chartName] = 'loading';
+    this.cdr.detectChanges();
+    const hasOccurrences = !this.CONTINUOUS_CHARTS.has(chartName) || this.WEEKLY_RESET_CHARTS.has(chartName);
+    const needsOccurrences = hasOccurrences && !this.eventOccurrences[chartName];
+    const [response, occurrences] = await Promise.all([
+      this.apiRestService.getPlayerStatsSeriesByPlayerId(this.playerId, [source.table], wanted),
+      needsOccurrences
+        ? this.apiRestService.getPlayerEventOccurrencesByPlayerId(this.playerId, source.table)
+        : Promise.resolve(null),
+    ]);
+    if (!response.success) {
+      this.seriesState[chartName] = 'error';
+      this.cdr.detectChanges();
+      return;
+    }
+    if (occurrences?.success) {
+      this.eventOccurrences[chartName] = occurrences.data.occurrences;
+    }
+    this.setSeries(source.table, response.data.points[source.table] ?? []);
+    this.seriesWindow[source.table] = wanted;
+    this.buildChart(chartName);
+    this.seriesState[chartName] = 'loaded';
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * How many days of a chart's table are loaded, for the card to decide whether a period needs fetching
+   *
+   * @param chartName The chart to report on
+   * @returns The window in days, 0 when nothing is loaded yet
+   */
+  public loadedDaysFor(chartName: string): number {
+    const source = this.CHART_SOURCES[chartName];
+    return source ? (this.seriesWindow[source.table] ?? 0) : 0;
+  }
+
+  /**
+   * The headline the summary gives for a chart, shown until the series itself arrives
+   *
+   * @param chartName The chart to report on
+   * @returns The summary entry, or null before the summary has loaded
+   */
+  public summaryFor(chartName: string): ApiPlayerStatsSummaryEvent | null {
+    const source = this.CHART_SOURCES[chartName];
+    if (!source || !this.eventSummary) return null;
+    return this.eventSummary[source.table] ?? null;
+  }
+
+  public navigateToEvent(event: OuterEventData | WoaEventList): void {
+    if ('event_num' in event) {
+      if (event.type === EventType.OUTER_REALM) {
+        void this.router.navigate(['/events', 'outer-realms', event.event_num]);
+      } else if (event.type === EventType.BEYOND_THE_HORIZON) {
+        void this.router.navigate(['/events', 'beyond-the-horizon', event.event_num]);
+      }
+    } else {
+      const resultByPage = 15;
+      const calculatedPage = Math.ceil((event.rank ?? 1) / resultByPage);
+      void this.router.navigate([event.type], {
+        queryParams: { date: event.date.toISOString(), page: calculatedPage },
+      });
+    }
+  }
+
+  public get viewerTimeZoneLabel(): string {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const minutes = -new Date().getTimezoneOffset();
+    const sign = minutes < 0 ? '-' : '+';
+    const absolute = Math.abs(minutes);
+    const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
+    const rest = String(absolute % 60).padStart(2, '0');
+    return `${zone}, UTC${sign}${hours}:${rest}`;
+  }
+
+  public getMonthNameByDate(date: string): string {
+    const [year, month] = date.split('-');
+    return this.translateService.instant(this.monthNames[Number(month) - 1]) + ' ' + year;
+  }
+
+  public previousAquamarineMonth(): void {
+    const [year, month] = this.aquamarineMonth.split('-');
+    const previousMonth = Number(month) - 1;
+    if (previousMonth < 1) {
+      this.aquamarineMonth = `${Number(year) - 1}-12`;
+    } else {
+      this.aquamarineMonth = `${year}-${previousMonth.toString().padStart(2, '0')}`;
+    }
+    this.initAquamarineCharts();
+    this.cdr.detectChanges();
+  }
+
+  public nextAquamarineMonth(): void {
+    const [year, month] = this.aquamarineMonth.split('-');
+    const nextMonth = Number(month) + 1;
+    if (new Date(Number(year), nextMonth - 1) > new Date()) {
+      return;
+    } else if (nextMonth > 12) {
+      this.aquamarineMonth = `${Number(year) + 1}-01`;
+    } else {
+      this.aquamarineMonth = `${year}-${nextMonth.toString().padStart(2, '0')}`;
+    }
+    this.initAquamarineCharts();
+    this.cdr.detectChanges();
+  }
+
+  public async ngOnInit(): Promise<void> {
+    const selectedTab = await firstValueFrom(this.route.fragment);
+    if (selectedTab && this.tabs.some((tab) => tab.key === selectedTab)) {
+      this.currentTab = selectedTab as PlayerStatsTabs;
+    }
+    combineLatest([this.route.params, this.route.fragment]).subscribe(async ([parameters, fragment]) => {
+      try {
+        const playerId = parameters['playerId'];
+        this.playerId = playerId;
+        if (!this.eventSummary) {
+          this.isInLoading = true;
+          this.cdr.detectChanges();
+          const response: ApiResponse<ApiPlayerStatsSummary> =
+            await this.apiRestService.getPlayerStatsSummaryByPlayerId(playerId);
+          if (!response || response.success === false || !playerId || Number.isNaN(playerId) || playerId <= 0) {
+            throw new Error('Invalid player ID or unable to load player data');
+          }
+          const data = response.data;
+          this.mightPeriod = 'week';
+          this.playerName = data.player_name;
+          this.lootReset = lootResetOf(data.loot_reset, data.timezone_offset);
+          this.addStructuredPlayerData({
+            name: this.playerName,
+            url: `gge-tracker.com/player/${playerId}`,
+            alliance: data.alliance_name ?? '',
+            might: data.events[ApiPlayerStatsType.might]?.last_point ?? 0,
+          });
+          this.eventSummary = data.events;
+          this.allianceName = data.alliance_name ?? undefined;
+          this.allianceId = data.alliance_id ?? undefined;
+          this.top100Glory = data.glory_points_100;
+        }
+        const formattedFragment = this.formatFragment(fragment);
+        if (formattedFragment !== 'overview') {
+          this.clearChartsObservers();
+        }
+        void this.fillData(formattedFragment);
+        void this.initPlayerData(playerId);
+      } catch {
+        this.isInLoading = false;
+        this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+        this.cdr.detectChanges();
+        void this.router.navigate(['/']);
+      }
+    });
+  }
+
+  public formatFragment(fragment: string | null): PlayerStatsTabs {
+    if (fragment && this.tabs.some((tab) => tab.key === fragment)) {
+      return fragment as PlayerStatsTabs;
+    }
+    return 'overview';
+  }
+
+  public get projectedFame(): number {
+    return ((this.stats?.currentFame ?? 0) * (100 - (this.currentPlayerTitle?.decay ?? 0))) / 100;
+  }
+
+  public get isTitleSecured(): boolean {
+    return this.projectedFame >= (this.currentPlayerTitle?.threshold ?? 0);
+  }
+
+  public get visibleFameTitles(): RankingFameTitle[] {
+    if (this.showAllFameTitles) return this.fameTitles;
+    const fame = this.stats?.currentFame ?? 0;
+    const reached = this.fameTitles.findIndex((title) => (title.threshold ?? 0) <= fame);
+    const current = reached === -1 ? this.fameTitles.length - 1 : reached;
+    const start = Math.max(0, current - 2);
+    return this.fameTitles.slice(start, start + 5);
+  }
+
+  public fameTitleState(title: RankingFameTitle): 'ok' | 'warn' | 'locked' {
+    const threshold = title.threshold ?? 0;
+    if ((this.stats?.currentFame ?? 0) < threshold) return 'locked';
+    return this.projectedFame >= threshold ? 'ok' : 'warn';
+  }
+
+  public getCurrentFameTitle(): RankingFameTitle {
+    const fallback = this.fameTitles.at(-1) || {
+      titleID: 'unknown',
+      type: 'FAME',
+      displayType: 'DEFAULT',
+      mightValue: '0',
+      decay: 0,
+      threshold: 0,
+    };
+    try {
+      const eligible = this.fameTitles.filter(
+        (title) => title.threshold && Number(title.threshold) < this.stats!.currentFame,
+      );
+      return eligible.reduce(
+        (max, t) => (Number(t.threshold) > Number(max.threshold) ? t : max),
+        eligible[0] ?? fallback,
+      );
+    } catch {
+      return fallback;
+    }
+  }
+
+  public async getPlayerGloryTitle(): Promise<[RankingFameTitle | null, RankingFameTitle | null]> {
+    const jsonConfigPath = 'assets/titles/titles.json';
+    const json = await this.apiRestService.apiFetch(jsonConfigPath);
+    if (json.success) {
+      const titles: RankingFameTitle[] = (json.data as RankingFameTitle[]).map((title: RankingFameTitle) => ({
+        decay: title.decay === undefined ? undefined : Number(title.decay),
+        displayType: title.displayType,
+        mightValue: title.mightValue,
+        threshold: title.threshold === undefined ? undefined : Number(title.threshold),
+        topX: title.topX === undefined ? undefined : Number(title.topX),
+        titleID: title.titleID,
+        type: title.type,
+      }));
+      const fameTitles = titles.filter((title) => title.type === 'FAME').reverse();
+      this.fameTitlesTopX = fameTitles.filter((title) => title.topX !== undefined);
+      this.fameTitlesTopX.forEach((title) => {
+        const topTitle = this.top100Glory.find((g) => g.top === (title.topX ?? -1));
+        if (topTitle) {
+          title.threshold = topTitle.point;
+        }
+      });
+      this.fameTitles = fameTitles.filter((title) => title.topX === undefined);
+      const currentFameTitle = this.getCurrentFameTitle();
+      const currentFameTopXTitle = this.fameTitlesTopX.find(
+        (title) => title.topX && this.stats!.playerCurrentFameRank <= title.topX,
+      );
+
+      if (currentFameTopXTitle) {
+        this.nextFameTitle =
+          this.fameTitlesTopX.find((title) => title.topX && title.topX < currentFameTopXTitle.topX!) || null;
+      } else {
+        const reversedFameTitles = [...this.fameTitles].reverse();
+        this.nextFameTitle =
+          reversedFameTitles.find((title) => title.threshold && Number(title.threshold) > this.stats!.currentFame) ||
+          null;
+        if (this.nextFameTitle === null && this.fameTitlesTopX.length > 0) {
+          this.nextFameTitle = this.fameTitlesTopX.at(-1) || null;
+        }
+      }
+      this.fameProgressPercentage = ((this.stats!.currentFame || 1) * 100) / (this.nextFameTitle?.threshold ?? 1);
+      this.fameProgressStrokeOffset = 226 - (226 * this.fameProgressPercentage) / 100;
+      this.isAtRisk =
+        currentFameTitle.decay !== undefined &&
+        ((100 - currentFameTitle.decay) * this.stats!.currentFame) / 100 < (currentFameTitle.threshold ?? 0);
+      return [currentFameTitle ?? null, currentFameTopXTitle ?? null];
+    }
+    throw new Error('Unable to load titles configuration');
+  }
+
+  public getScoreboardFromEvent(eventId: number): number | null {
+    if (this.top3Events === null) {
+      return null;
+    }
+    return this.top3Events[eventId] ? Object.keys(this.top3Events[eventId]).length : null;
+  }
+
+  /**
+   * This function returns the name of the event based on the event ID.
+   * It is used to display the name of the event in the UI.
+   * This method must return the i18n key for the event name (by default in French).
+   * @param eventId The ID of the event.
+   * @returns The event name as a key for i18n.
+   */
+  public getEventName(eventId: number): string {
+    switch (eventId) {
+      case 44: {
+        return 'Guerre des royaumes';
+      }
+      case 51: {
+        return 'Samouraïs';
+      }
+      case 46: {
+        return 'Nomades';
+      }
+      case 30: {
+        return 'Royaume de Berimond';
+      }
+      case 58: {
+        return 'Corbeaux de sang';
+      }
+      default: {
+        return 'Invasion de Berimond';
+      }
+    }
+  }
+
+  public readonly monumentsSearchFilter = (item: Monument, term: string): boolean => {
+    return (
+      item.type.toLowerCase().includes(term) ||
+      item.position.toLowerCase().includes(term) ||
+      item.kingdom?.toString().includes(term) ||
+      item.owner.toLowerCase().includes(term)
+    );
+  };
+
+  public get castleKinds(): { icon: string; label: string; count: number }[] {
+    return [
+      { icon: '/assets/castle1.png', label: 'Chateau principal', count: this.quantity.castle },
+      { icon: '/assets/castle4.png', label: 'Avant-poste', count: this.quantity.outpost },
+      { icon: '/assets/monument.png', label: 'Monument', count: this.quantity.monument },
+      { icon: '/assets/labo.png', label: 'Laboratoire', count: this.quantity.laboratory },
+      { icon: '/assets/tour-royale.png', label: 'Tour royale', count: this.quantity.royalTower },
+      { icon: '/assets/capitale.png', label: 'Capitale', count: this.quantity.capital },
+      { icon: '/assets/cite-marchande.png', label: 'Cité marchande', count: this.quantity.city },
+    ];
+  }
+
+  public get castlesByRealm(): { kingdom: number; name: string; count: number }[] {
+    const counts = new Map<number, number>();
+    for (const monument of this.monumentsList) {
+      const kingdom = monument.kingdom ?? 0;
+      counts.set(kingdom, (counts.get(kingdom) ?? 0) + 1);
+    }
+    return this.worlds
+      .filter((world) => counts.has(world.id))
+      .map((world) => ({ kingdom: world.id, name: world.name, count: counts.get(world.id) ?? 0 }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  public getRealmName(realmName?: number): string {
+    if (realmName === undefined) return 'Unknown';
+    return this.worlds.find((w) => w.id === realmName)?.name || 'Unknown';
+  }
+
+  public isInFavorites(): boolean {
+    return this.playerId !== undefined && this.followService.isFollowingPlayer(this.playerId);
+  }
+
+  public removePlayerFromFavorites(): void {
+    if (this.isInFavorites()) this.followService.togglePlayer(this.playerId!);
+    this.cdr.detectChanges();
+  }
+
+  public isMe(): boolean {
+    return this.playerId !== undefined && this.followService.me()?.playerId === String(this.playerId);
+  }
+
+  public setAsMe(): void {
+    if (this.playerId === undefined || !this.playerName) return;
+    this.followService.setMe({
+      playerId: String(this.playerId),
+      playerName: this.playerName,
+      server: this.apiRestService.serverService.currentServer?.name ?? '',
+    });
+    this.cdr.detectChanges();
+  }
+
+  public compareDate<T extends { date: string }>(a: T, b: T): number {
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  }
+
+  public getDateDiff(date1: string, date2: string): { value: string; durationValue: number } {
+    const diff = new Date(date2).getTime() - new Date(date1).getTime();
+    const months = Math.floor(diff / (1000 * 60 * 60 * 24 * 30));
+    const days = Math.floor((diff % (1000 * 60 * 60 * 24 * 30)) / (1000 * 60 * 60 * 24));
+    const hours = Math.round((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    let result = '';
+    if (months > 0) {
+      result += `${months} ${this.translateService.instant('mois' + (months > 1 ? 's' : ''))}`;
+    }
+    if (days > 0) {
+      if (result) result += ', ';
+      result += `${days} ${this.translateService.instant('jour' + (days > 1 ? 's' : ''))}`;
+    }
+    if (hours > 0) {
+      if (result) result += ', ';
+      result += `${hours} ${this.translateService.instant('heure' + (hours > 1 ? 's' : ''))}`;
+    }
+
+    return { value: result || this.translateService.instant("moins d'une heure"), durationValue: diff };
+  }
+
+  public addPlayerToFavorites(): void {
+    if (!this.isInFavorites() && this.playerId !== undefined) this.followService.togglePlayer(this.playerId);
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * How many runs of an event the chart is currently drawing
+   *
+   * @param chartName The chart to report on
+   * @returns The number of series drawn
+   */
+  public drawnSeriesCount(chartName: string): number {
+    const loaded = this.eventSeriesTotalCount[chartName] ?? 0;
+    if (this.eventSeriesExpanded[chartName]) return loaded;
+    return Math.min(loaded, this.EVENT_SERIES_DEFAULT_LIMIT);
+  }
+
+  /**
+   * How many runs of an event this chart could draw a line for
+   *
+   * @param chartName The chart to report on
+   * @returns The number of runs with something to draw
+   */
+  public totalOccurrences(chartName: string): number {
+    return (this.eventOccurrences[chartName] ?? []).filter((occurrence) => Number(occurrence.point) > 0).length;
+  }
+
+  /**
+   * Widens a chart to the player's full recorded year and shows every occurrence in it
+   *
+   * @param chartName The chart to widen
+   */
+  public async loadFullHistory(chartName: string): Promise<void> {
+    this.eventSeriesExpanded[chartName] = true;
+    await this.ensureSeries(chartName, this.FULL_HISTORY_DAYS);
+    this.buildChart(chartName);
+    this.cdr.detectChanges();
+  }
+
+  public onMightPeriodChange(period: 'day' | 'week' | 'month' | 'year'): void {
+    this.mightPeriod = period;
+    const days: Record<typeof period, number> = { day: 1, week: 7, month: 30, year: 365 };
+    void this.ensureSeries('might', days[period]).then(() => {
+      this.initMightHistoryData();
+      this.cdr.detectChanges();
+    });
+  }
+
+  public getHiddenEventCount(chartName: string): number {
+    const total = this.eventSeriesTotalCount[chartName] ?? 0;
+    if (this.eventSeriesExpanded[chartName]) return 0;
+    return Math.max(0, total - this.EVENT_SERIES_DEFAULT_LIMIT);
+  }
+
+  public expandEventSeries(chartName: string): void {
+    this.eventSeriesExpanded[chartName] = true;
+    this.reinitEventChart(chartName);
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Stores the points of one event table, ready for the chart builders to consume
+   *
+   * @param table The event table these points belong to
+   * @param points The points as the API returned them, oldest first
+   */
+  private setSeries(table: ApiPlayerStatsType, points: ApiGenericData[]): void {
+    this.data[table] = points.map((point) => ({
+      utcDate: point.date,
+      date: this.formatLocalDate(point.date),
+      point: point.point,
+      variation: 0,
+    }));
+  }
+
+  /**
+   * Rebuilds the charts drawn from one table, after its series arrived or was widened
+   *
+   * @param chartName The chart to rebuild
+   */
+  private buildChart(chartName: string): void {
+    switch (chartName) {
+      case 'might': {
+        this.initMightHistoryData();
+        break;
+      }
+      case 'loot': {
+        this.initLootHistoryData();
+        break;
+      }
+      default: {
+        this.reinitEventChart(chartName);
+      }
+    }
+  }
+
+  /**
+   * Maps a table back to the chart it feeds, for the events a card reports against a table name
+   *
+   * @param table The event table
+   * @returns The chart name, or undefined for a table no chart draws
+   */
+  private chartNameForTable(table: string): string | undefined {
+    return Object.keys(this.CHART_SOURCES).find((name) => this.CHART_SOURCES[name].table === table);
+  }
+
+  private reinitEventChart(chartName: string): void {
+    switch (chartName) {
+      case 'warRealms': {
+        this.initWarRealmsData();
+        break;
+      }
+      case 'nomad': {
+        this.initNomadHistoryData();
+        break;
+      }
+      case 'berimondKingdom': {
+        this.initBerimondKingdomData();
+        break;
+      }
+      case 'samurai': {
+        this.initSamuraiHistoryData();
+        break;
+      }
+      case 'bloodcrow': {
+        this.initBloodcrowHistoryData();
+        break;
+      }
+    }
+  }
+
+  private initEventOverlayChart(chartName: string, points: EventGenericVariation[], eventColor: string): void {
+    const occurrences = this.groupEventDataByTimeGaps(this.eventDataSegments[chartName], points).filter(
+      (occurrence) => !this.isCutByLoadedWindow(chartName, occurrence),
+    );
+    const series = this.applySeriesLimit(chartName, this.generateEventSeries(occurrences)).reverse();
+    const runs = series.map((serie) => serie.data as [number, number][]);
+    const startedAts = runs.map((run) => run[0]?.[0] ?? 0);
+    const hourlyRuns = runs.map((run) => this.toHoursSinceEventStart(run));
+    const hourCount = Math.max(0, ...hourlyRuns.map((run) => run.length));
+    series.forEach((serie, index) => {
+      serie.data = Array.from({ length: hourCount }, (_, hour) => [hour, hourlyRuns[index][hour] ?? null]);
+      serie['hidden'] = index >= this.EVENT_OVERLAY_VISIBLE;
+    });
+    this.initChartOption(chartName, series, this.eventRunColors(eventColor, series.length));
+    const chart = this.charts[chartName];
+    this.styleOverlaidPeriods(chart, series.length);
+    this.useEventHoursAxis(chart, hourCount, startedAts);
+    this.labelEventRunEnds(chart, hourlyRuns, startedAts);
+  }
+
+  private eventRunColors(eventColor: string, runCount: number): string[] {
+    const previous = new Gradient().setColorGradient(eventColor, '#2b211b').setMidpoint(3).getColors()[1];
+    const older = new Gradient().setColorGradient(eventColor, '#a89c8e').setMidpoint(4).getColors()[2];
+    return Array.from({ length: runCount }, (_, index) => [eventColor, previous][index] ?? older);
+  }
+
+  private labelEventRunEnds(chart: ChartOptions, hourlyRuns: number[][], startedAts: number[]): void {
+    const locale = this.languageService.getCurrentLang();
+    const labels = hourlyRuns.map((run, index) => {
+      const score = this.getUnitByValue(run.at(-1) ?? 0);
+      if (index === 0 && this.isRunInProgress(startedAts[0], run.length)) {
+        return `${this.translateService.instant('En cours')} · ${score}`;
+      }
+      return `${new Date(startedAts[index]).toLocaleDateString(locale).slice(0, -5)} · ${score}`;
+    });
+    chart.dataLabels = {
+      enabled: true,
+      formatter: (_value, { seriesIndex, dataPointIndex }): string =>
+        dataPointIndex === hourlyRuns[seriesIndex].length - 1 ? labels[seriesIndex] : '',
+      textAnchor: 'end',
+      offsetY: -8,
+      style: { fontSize: '11px', fontWeight: 600 },
+      background: { enabled: true, foreColor: '#fff', borderWidth: 0, borderRadius: 4, padding: 4, opacity: 0.95 },
+    };
+  }
+
+  private isRunInProgress(startedAt: number, hourCount: number): boolean {
+    // Same margin as generateEventSeries: a run read within the last 3 hours is still open
+    return startedAt + (hourCount + 2) * MS_PER_HOUR > Date.now();
+  }
+
+  private isCutByLoadedWindow(chartName: string, occurrence: [number, number][]): boolean {
+    const loadedDays = this.loadedDaysFor(chartName);
+    if (loadedDays === 0 || occurrence.length === 0) return false;
+    const msPerDay = HOURS_PER_DAY * MS_PER_HOUR;
+    return occurrence[0][0] - (Date.now() - loadedDays * msPerDay) < msPerDay;
+  }
+
+  private toHoursSinceEventStart(occurrence: [number, number][]): number[] {
+    const startedAt = occurrence[0]?.[0] ?? 0;
+    const hourly: number[] = [];
+    for (const [timestamp, point] of occurrence) {
+      const hour = Math.round((timestamp - startedAt) / MS_PER_HOUR);
+      // A missed fill holds the previous score rather than breaking the line
+      while (hourly.length < hour) hourly.push(hourly.at(-1) ?? 0);
+      hourly[hour] = Number(point);
+    }
+    return hourly;
+  }
+
+  private useEventHoursAxis(chart: ChartOptions, hourCount: number, startedAts: number[]): void {
+    const dayCount = Math.max(1, Math.ceil((hourCount - 1) / HOURS_PER_DAY));
+    const halfDay = HOURS_PER_DAY / 2;
+    const locale = this.languageService.getCurrentLang();
+    const dayLabel = (hour: number): string =>
+      this.translateService.instant('Jour 0', { day: Math.floor(hour / HOURS_PER_DAY) + 1 });
+    chart.xaxis = {
+      type: 'numeric',
+      min: 0,
+      max: dayCount * HOURS_PER_DAY,
+      tickAmount: dayCount * 2,
+      tooltip: { enabled: false },
+      labels: {
+        formatter: (value: string): string => {
+          const halfDays = Math.round(Number(value) / halfDay);
+          return halfDays % 2 === 1 ? dayLabel(halfDays * halfDay) : '';
+        },
+      },
+    };
+    const hourUnit = this.translateService.instant('heures_h');
+    chart.tooltip.x = { formatter: (hour: number): string => `${dayLabel(hour)} · ${hour}${hourUnit}` };
+    chart.tooltip.y = {
+      formatter: (value: number | null | undefined, { seriesIndex, dataPointIndex }): string => {
+        if (typeof value !== 'number') return '–';
+        const readAt = new Date(startedAts[seriesIndex] + dataPointIndex * MS_PER_HOUR).toLocaleString(locale, {
+          weekday: 'short',
+          day: '2-digit',
+          month: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        return `${formatThousands(value.toString())}  ·  ${readAt}`;
+      },
+    };
+  }
+
+  private applySeriesLimit(chartName: string, series: ApexAxisChartSeries): ApexAxisChartSeries {
+    this.eventSeriesTotalCount[chartName] = series.length;
+    if (this.eventSeriesExpanded[chartName]) return series;
+    return series.slice(-this.EVENT_SERIES_DEFAULT_LIMIT);
+  }
+
+  private initRadialChartOption(name: string, data: number[], color: string[]): void {
+    this.radialCharts[name] = {
+      // @ts-expect-error: ApexAxisChartSeries expects an array of objects with name and data properties
+      series: data,
+      colors: color,
+      chart: {
+        type: 'radialBar',
+        height: 350,
+      },
+      plotOptions: {
+        radialBar: {
+          dataLabels: {
+            name: {
+              fontSize: '22px',
+              color: undefined,
+              offsetY: 120,
+            },
+            value: {
+              fontSize: '16px',
+              color: undefined,
+              offsetY: 76,
+              formatter: function (value): string {
+                return value + '%';
+              },
+            },
+          },
+        },
+      },
+      xaxis: {},
+      yaxis: {},
+      fill: {},
+      stroke: {},
+      dataLabels: {},
+      grid: {},
+      legend: {},
+      title: {},
+      tooltip: {},
+    };
+  }
+
+  private formatHourlyCategoriesIntl(lang: string): string[] {
+    const formatter = new Intl.DateTimeFormat(lang, {
+      hour: 'numeric',
+      hour12: undefined,
+    });
+
+    return Array.from({ length: 24 }, (_, index) => {
+      const date = new Date(2020, 0, 1, index);
+      return formatter.format(date);
+    });
+  }
+
+  private initHeatmapChartOption(name: string, data: ApexAxisChartSeries, color: string[]): void {
+    this.charts[name] = {
+      series: data,
+      chart: {
+        height: 650,
+        type: 'heatmap',
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      colors: color,
+      xaxis: {
+        type: 'category',
+        categories: [],
+      },
+      title: {},
+      grid: {
+        padding: {
+          right: 20,
+        },
+      },
+      yaxis: {},
+      fill: {},
+      stroke: {},
+      tooltip: {
+        y: {
+          formatter: function (value): string {
+            if (value === null) return '?';
+            if (value > 0) return formatThousands(value.toString());
+            return '0';
+          },
+        },
+      },
+      legend: {},
+      plotOptions: {
+        heatmap: {
+          colorScale: {
+            ranges: [
+              { from: 0, to: 0, color: '#4e4e4e', name: '0' },
+              { from: 1, to: 1_000_000, color: '#FFF3E0', name: '0 - 1M' },
+              { from: 1_000_001, to: 10_000_000, color: '#FFE0B2', name: '1M - 10M' },
+              { from: 10_000_001, to: 50_000_000, color: '#FFCC80', name: '10M - 50M' },
+              { from: 50_000_001, to: 100_000_000, color: '#FFB74D', name: '50M - 100M' },
+              { from: 100_000_001, to: 250_000_000, color: '#FFA726', name: '100M - 250M' },
+              { from: 250_000_001, to: 500_000_000, color: '#FF9800', name: '250M - 500M' },
+              { from: 500_000_001, to: 1_000_000_000, color: '#FB8C00', name: '500M - 1Md' },
+              { from: 1_000_000_001, to: 2_000_000_000, color: '#F57C00', name: '1Md - 2Md' },
+              { from: 2_000_000_001, to: 3_000_000_000, color: '#EF6C00', name: '2Md - 3Md' },
+              { from: 3_000_000_001, to: 4_000_000_000, color: '#E65100', name: '3Md - 4Md' },
+              { from: 4_000_000_001, to: Number.MAX_SAFE_INTEGER, color: '#BF360C', name: '> 4Md' },
+            ],
+          },
+        },
+      },
+    };
+    this.spinnerLoadingByChart[name] = false;
+  }
+
+  private initAverageGainChart(name: string, data: ApexAxisChartSeries): void {
+    const lang = this.languageService.getCurrentLang();
+    this.charts[name] = {
+      series: data,
+      chart: {
+        type: 'area',
+        height: 250,
+        zoom: {},
+      },
+      stroke: {
+        curve: 'smooth',
+        width: 3,
+      },
+      xaxis: {
+        categories: this.formatHourlyCategoriesIntl(lang),
+      },
+      tooltip: {
+        y: {
+          formatter: (value): string => formatThousands(value.toString()),
+        },
+      },
+      colors: ['#EF6C00'],
+      dataLabels: {
+        enabled: false,
+      },
+      title: {},
+      grid: {},
+      fill: {},
+      yaxis: {
+        labels: {
+          formatter: (value): string => formatThousands(value.toString()),
+        },
+      },
+      legend: {},
+      plotOptions: {},
+    };
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.charts[name].chart.zoom.allowMouseWheelZoom = false;
+  }
+
+  private initHourlyActivityChart(name: string, data: ApexAxisChartSeries): void {
+    const lang = this.languageService.getCurrentLang();
+    this.charts[name] = {
+      series: data,
+      chart: {
+        type: 'bar',
+        height: 250,
+        zoom: {},
+      },
+      xaxis: {
+        categories: this.formatHourlyCategoriesIntl(lang),
+      },
+      yaxis: {
+        max: 100,
+        labels: {
+          formatter: (value): string => `${value}%`,
+        },
+      },
+      tooltip: {
+        y: {
+          formatter: (value): string => `${value}%`,
+        },
+      },
+      colors: ['#FB8C00'],
+      dataLabels: {
+        enabled: false,
+      },
+      title: {},
+      grid: {},
+      fill: {},
+      stroke: {},
+      legend: {},
+      plotOptions: {},
+    };
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.charts[name].chart.zoom.allowMouseWheelZoom = false;
+  }
+
+  private initChartOption(name: string, data: ApexAxisChartSeries, color: string[]): void {
+    const dateFormat = this.translateService.instant('Date_4');
+    this.charts[name] = {
+      series: data,
+      title: {},
+      tooltip: {
+        shared: true,
+        intersect: false,
+        x: {
+          format: dateFormat,
+        },
+        y: {
+          formatter: function (value): string {
+            if (value === null) return '?';
+            if (value > 0) return formatThousands(value.toString());
+            return '0';
+          },
+        },
+      },
+      chart: {
+        animations: {
+          enabled: false,
+        },
+        selection: {
+          enabled: true,
+        },
+        height: 450,
+        type: 'area',
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+        zoom: {
+          type: 'x',
+          enabled: true,
+          autoScaleYaxis: true,
+        },
+        stacked: false,
+        stackType: undefined,
+        toolbar: {},
+      },
+      colors: color,
+      fill: {
+        colors: undefined,
+        opacity: 0.3,
+        type: 'gradient',
+        gradient: {
+          type: 'vertical',
+          gradientToColors: undefined,
+          opacityFrom: 0.8,
+          opacityTo: 0.7,
+          colorStops: [],
+        },
+        pattern: {
+          style: 'verticalLines',
+          width: 6,
+          height: 6,
+          strokeWidth: 2,
+        },
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      markers: {},
+      stroke: {
+        width: 2,
+      },
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      legend: {
+        show: true,
+        showForSingleSeries: true,
+        showForZeroSeries: true,
+      },
+      yaxis: {
+        labels: {
+          formatter: function (value): string {
+            return value === null ? '?' : formatThousands(value.toString());
+          },
+        },
+        min: 0,
+        forceNiceScale: true,
+      },
+      plotOptions: {},
+      xaxis: {
+        type: 'datetime',
+        labels: {
+          show: true,
+          rotate: -45,
+          rotateAlways: false,
+          hideOverlappingLabels: true,
+          showDuplicates: true,
+          datetimeFormatter: {
+            year: 'yyyy',
+            month: "MMM 'yy",
+            day: 'dd MMM',
+            hour: 'HH:mm',
+            minute: 'HH:mm',
+          },
+          datetimeUTC: false,
+          trim: false,
+          minHeight: undefined,
+          maxHeight: 120,
+          style: {
+            colors: [],
+            fontSize: '12px',
+            fontFamily: 'Helvetica, Arial, sans-serif',
+            cssClass: 'apexcharts-xaxis-label',
+          },
+        },
+      },
+    };
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.charts[name].chart.zoom.allowMouseWheelZoom = false;
+    this.spinnerLoadingByChart[name] = false;
+  }
+
+  /**
+   * Builds the participation tab: one bar per run of the event, newest first
+   *
+   * @param occurrences Every run of the event, oldest first
+   * @returns The score of each run and the label to put under it, newest first
+   */
+  private buildFinalScoresSeries(occurrences: ApiPlayerEventOccurrence[]): { data: number[]; categories: string[] } {
+    const locale = this.languageService.getCurrentLang();
+    const data: number[] = [];
+    const categories: string[] = [];
+    for (const occurrence of occurrences) {
+      const score = Number(occurrence.point);
+      if (this.isCurrentOccurrence(occurrence)) {
+        categories.push(this.translateService.instant('Événement courant'));
+      } else {
+        categories.push(
+          this.translateService.instant('Événement du 0 au 0', {
+            start: new Date(occurrence.started_at).toLocaleDateString(locale).slice(0, -5),
+            end: new Date(occurrence.ended_at).toLocaleDateString(locale).slice(0, -5),
+          }) + ` (${this.getUnitByValue(score)})`,
+        );
+      }
+      data.push(score);
+    }
+    return { data: [...data].reverse(), categories: [...categories].reverse() };
+  }
+
+  private isCurrentOccurrence(occurrence: ApiPlayerEventOccurrence): boolean {
+    const endWithBuffer = new Date(occurrence.ended_at);
+    endWithBuffer.setHours(endWithBuffer.getHours() + 3);
+    return endWithBuffer.getTime() >= Date.now();
+  }
+
+  private initFinalScoresChartOption(name: string, data: number[], categories: string[], color: string): void {
+    const scoreLabel = this.translateService.instant('Score');
+    const chartHeight = Math.max(350, data.length * 32);
+
+    let barColors: string[];
+    if (data.length > 0) {
+      const gradient = new Gradient();
+      gradient.setColorGradient('#cccccc', color);
+      gradient.setMidpoint(Math.max(data.length, 2));
+      const gradientSteps = gradient.getColors();
+      const ranked = [...data].map((score, index) => ({ score, index })).sort((a, b) => a.score - b.score);
+      barColors = Array.from({ length: data.length }, () => color);
+      ranked.forEach(({ index }, rank) => {
+        barColors[index] = gradientSteps[rank] ?? color;
+      });
+    } else {
+      barColors = [color];
+    }
+
+    this.charts[name] = {
+      series: [{ name: scoreLabel, data }],
+      chart: {
+        type: 'bar',
+        height: chartHeight,
+        animations: { enabled: false },
+        toolbar: {},
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          barHeight: '65%',
+          borderRadius: 4,
+          distributed: true,
+        },
+      },
+      dataLabels: {
+        enabled: true,
+        formatter: (value): string => this.getUnitByValue(Number(value)),
+        style: { fontSize: '11px', colors: ['#333333'] },
+        offsetX: 8,
+      },
+      colors: barColors,
+      xaxis: {
+        type: 'category',
+        categories,
+        labels: {
+          style: { fontSize: '11px' },
+        },
+      },
+      yaxis: {
+        labels: {
+          style: { fontSize: '11px' },
+          maxWidth: 220,
+        },
+        forceNiceScale: true,
+      },
+      tooltip: {
+        y: {
+          formatter: (value): string => formatThousands(value.toString()),
+        },
+      },
+      title: {},
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      fill: { opacity: 1 },
+      stroke: { width: 0 },
+      legend: { show: false },
+      markers: {},
+    };
+    this.spinnerLoadingByChart[name] = false;
+  }
+
+  private buildEventCharts(chartName: string, scoresCount: number): void {
+    const scoresLabel = `${this.translateService.instant('Participation')} (${scoresCount})`;
+    this.eventCharts[chartName] = {
+      [this.translateService.instant('Graphique')]: this.charts[chartName],
+      [scoresLabel]: this.charts[`${chartName}-scores`],
+    };
+  }
+
+  /**
+   * Builds the indicator tab: how often the player takes part in an event and what they score
+   *
+   * @param chartName The chart these indicators belong to
+   * @param occurrences Every run of the event, oldest first
+   */
+  private buildEventStats(chartName: string, occurrences: ApiPlayerEventOccurrence[]): void {
+    const finalScores: number[] = occurrences
+      .filter((occurrence) => !this.isCurrentOccurrence(occurrence))
+      .map((occurrence) => Number(occurrence.point));
+    if (finalScores.length === 0) {
+      delete this.eventStats[chartName];
+      return;
+    }
+    const participating = finalScores.filter((s) => s > 0);
+    const participatingCount = participating.length;
+    const totalCompleted = finalScores.length;
+    const participationRate = Math.round((participatingCount / totalCompleted) * 100);
+    const avgScore =
+      participatingCount > 0 ? Math.round(participating.reduce((a, b) => a + b, 0) / participatingCount) : 0;
+    let trendPercent: number | null = null;
+    if (participating.length >= 4) {
+      const last3 = participating.slice(-3);
+      const recentAvg = last3.reduce((a, b) => a + b, 0) / last3.length;
+      trendPercent = Math.round((recentAvg / avgScore - 1) * 100);
+    }
+    this.eventStats[chartName] = {
+      averageScore: avgScore,
+      participatingEvents: participatingCount,
+      totalCompletedEvents: totalCompleted,
+      participationRate,
+      trendPercent,
+    };
+  }
+
+  /**
+   * Condenses the wheel of affluence history into what the card list cannot show at a glance:
+   * one ticket spun costs one ticket and scores one point, so the points a player accumulated
+   * over an event are the tickets they spent on it
+   *
+   * @param recentEvents The events the API returned as cards, newest first
+   * @param player The exact aggregates over the player's whole tracked history
+   * @param coverage How far back the WoA scraper reaches on this server
+   */
+  private buildWoaSummary(
+    recentEvents: WoaEventList[],
+    player: ApiWoaEventPlayerAggregates,
+    coverage: ApiWoaEventPlayerCoverage,
+  ): WoaPlayerSummary | null {
+    const eventCount = Number(player.events_count);
+    if (eventCount < WOA_SUMMARY_MIN_EVENTS) return null;
+    const totalTickets = Number(player.total_points);
+    const averageTickets = eventCount > 0 ? Math.round(totalTickets / eventCount) : 0;
+    const coverageStartIso = player.first_event ?? coverage.first_tracked_event;
+    let trendPercent: number | null = null;
+    if (recentEvents.length >= WOA_TREND_MIN_EVENTS && averageTickets > 0) {
+      const chronological = [...recentEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const recent = chronological.slice(-WOA_TREND_WINDOW);
+      const recentAverage = recent.reduce((total, event) => total + Number(event.point), 0) / recent.length;
+      trendPercent = Math.round((recentAverage / averageTickets - 1) * 100);
+    }
+    return {
+      totalTickets,
+      eventCount,
+      averageTickets,
+      bestEvent: {
+        value: Number(player.best_point),
+        date: player.best_point_date ? new Date(player.best_point_date) : null,
+      },
+      bestRankEvent: {
+        value: Number(player.best_rank),
+        date: player.best_rank_date ? new Date(player.best_rank_date) : null,
+      },
+      trendPercent,
+      coverageStart: coverageStartIso ? new Date(coverageStartIso) : null,
+      trackedEvents: Number(coverage.tracked_events_since_player),
+    };
+  }
+
+  private initWarRealmsData(): void {
+    const warRealms = this.data['player_event_war_realms_history'];
+    // this.setGenericVariations(warRealms);
+    this.initEventOverlayChart('warRealms', warRealms, '#7d37d4');
+    const occurrences = this.eventOccurrences['warRealms'] ?? [];
+    const { data, categories } = this.buildFinalScoresSeries(occurrences);
+    this.initFinalScoresChartOption('warRealms-scores', data, categories, '#7d37d4');
+    this.buildEventStats('warRealms', occurrences);
+    this.buildEventCharts('warRealms', data.length);
+  }
+
+  private initNomadHistoryData(): void {
+    const nomadPoints = this.data['player_event_nomad_history'];
+    // this.setGenericVariations(nomadPoints);
+    this.initEventOverlayChart('nomad', nomadPoints, '#ff8800');
+    const occurrences = this.eventOccurrences['nomad'] ?? [];
+    const { data, categories } = this.buildFinalScoresSeries(occurrences);
+    this.initFinalScoresChartOption('nomad-scores', data, categories, '#ff8800');
+    this.buildEventStats('nomad', occurrences);
+    this.buildEventCharts('nomad', data.length);
+  }
+
+  private async initPlayerStats(): Promise<void> {
+    if (!this.playerId) return;
+    let stats = await this.route.snapshot.data['stats'];
+    if (stats.success === false) {
+      stats = {
+        data: {
+          player_id: this.playerId,
+          alliance_name: null,
+          player_name: '',
+          server: '',
+          might_current: -1,
+          might_all_time: -1,
+          current_fame: -1,
+          highest_fame: -1,
+          peace_disabled_at: null,
+          loot_current: -1,
+          loot_all_time: -1,
+          level: 0,
+          legendary_level: -1,
+          updated_at: '',
+          honor: -1,
+          max_honor: -1,
+          server_rank: -1,
+          global_rank: -1,
+          player_current_fame_rank: '-1',
+          castles: [],
+          castles_realm: [],
+        },
+        success: true,
+      };
+    }
+    this.stats = this.mapStatsFromData(stats.data);
+    this.fillQuantity();
+    this.setMonuments();
+    for (const key of Object.keys(this.stats)) {
+      const object = Number(this.stats[key as keyof IRankingStatsPlayer]);
+      if (Number.isNaN(object)) {
+        this.animatedStats[key as keyof IRankingStatsPlayer] = 0;
+        continue;
+      }
+      this.animateStatTo(key as keyof IRankingStatsPlayer, object);
+    }
+    this.cdr.detectChanges();
+  }
+
+  private animateStatTo(statKey: keyof IRankingStatsPlayer, targetValue: number): void {
+    const target = this.animatedStats[statKey] || 0;
+    if (target) {
+      cancelAnimationFrame(target);
+    }
+    const duration = 1000;
+    const startTime = performance.now();
+    const startValue = this.animatedStats[statKey] || 0;
+    const animate = (currentTime: number): void => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      this.animatedStats[statKey] = Math.floor(startValue + (targetValue - startValue) * this.easeOutCircle(progress));
+      this.cdr.detectChanges();
+      if (progress < 1) {
+        this.animationFrames[statKey] = requestAnimationFrame(animate);
+      }
+    };
+    this.animationFrames[statKey] = requestAnimationFrame(animate);
+  }
+
+  private easeOutCubic(t: number): number {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  private easeOutCircle(t: number): number {
+    return Math.sqrt(1 - Math.pow(t - 1, 2));
+  }
+
+  private setMonuments(): void {
+    const allMonuments = this.stats?.castles;
+    if (!allMonuments || allMonuments.length === 0) {
+      this.monumentsList = [];
+      return;
+    }
+    const monumentsList: {
+      type: string;
+      position: string;
+      kingdom: number;
+      owner: string;
+      color: string;
+    }[] = [];
+    allMonuments.forEach((entry) => {
+      monumentsList.push({
+        type: this.translateService.instant(this.getCastleType(entry[3])),
+        position: `${entry[1]}, ${entry[2]}`,
+        kingdom: entry[0],
+        owner: this.playerName || '',
+        color: '#000000',
+      });
+    });
+    monumentsList.sort((a, b) => a.type.localeCompare(b.type) || a.owner.localeCompare(b.owner));
+    this.monumentsList = monumentsList;
+  }
+
+  private mapStatsFromData(data: ApiRankingStatsPlayer): IRankingStatsPlayer {
+    const castles = this.getCastlesFromData(data.castles, data.castles_realm);
+    return {
+      playerId: Number(data.player_id),
+      server: data.server,
+      playerCurrentFameRank: Number(data.player_current_fame_rank),
+      mightCurrent: Number(data.might_current),
+      mightAllTime: Number(data.might_all_time),
+      currentFame: Number(data.current_fame),
+      highestFame: Number(data.highest_fame),
+      peaceDisabledAt: data.peace_disabled_at ? new Date(data.peace_disabled_at) : null,
+      lootCurrent: Number(data.loot_current),
+      lootAllTime: Number(data.loot_all_time),
+      level: Number(data.level),
+      legendaryLevel: Number(data.legendary_level),
+      honor: Number(data.honor),
+      maxHonor: Number(data.max_honor),
+      serverRank: Number(data.server_rank),
+      globalRank: Number(data.global_rank),
+      updatedAt: new Date(data.updated_at),
+      totalLevel: Number(data.level) + Number(data.legendary_level || 0),
+      castles: castles,
+      totalCastles: castles.length,
+    };
+  }
+
+  private getCastlesFromData(castles: number[][] | null, castlesRealm: number[][] | null): number[][] {
+    const globalCastles: number[][] = [];
+    if (castles) {
+      globalCastles.push(...castles.map((castle) => [0, ...castle]));
+    }
+    if (castlesRealm) {
+      const allowedIds = new Set([1, 12, 3, 4, 22, 23, 26, 28]);
+      castlesRealm = castlesRealm.filter((castle) => allowedIds.has(castle[3]));
+      globalCastles.push(...castlesRealm);
+    }
+    return globalCastles;
+  }
+
+  private initMightHistoryData(): void {
+    const allMightPoints = this.data['player_might_history'];
+    const mightPoints = this.filterMightDataByPeriod(allMightPoints);
+    // this.setGenericVariations(mightPoints);
+    const { dates, points } = this.getPointsAndDates(mightPoints);
+    this.translateService.get('Points de puissance').subscribe((translated) => {
+      this.initChartOption('might', [{ name: translated, data: points }], ['#b08417']);
+      this.charts['might'].fill = {
+        type: 'gradient',
+        gradient: { type: 'vertical', opacityFrom: 0.5, opacityTo: 0.06 },
+      };
+      this.charts['might'].stroke = { width: 2.5 };
+      this.charts['might'].xaxis.categories = dates;
+      this.charts['might'].yaxis.min = undefined;
+      this.charts['might'].chart.height = 420;
+      this.charts['might'].chart.animations = {
+        enabled: false,
+      };
+    });
+  }
+
+  private styleOverlaidPeriods(chart: ChartOptions, weekCount: number): void {
+    const weeks = Array.from({ length: weekCount }, (_, index) => index);
+    chart.fill = { type: 'solid', opacity: weeks.map((index) => (index === 0 ? 0.42 : 0)) };
+    chart.stroke = {
+      width: weeks.map((index) => (index === 0 ? 2.5 : index === 1 ? 2 : 1.5)),
+      dashArray: weeks.map((index) => (index === 0 ? 0 : index === 1 ? 6 : 2)),
+    };
+  }
+
+  private filterMightDataByPeriod(data: EventGenericVariation[]): EventGenericVariation[] {
+    if (this.mightPeriod === 'year') return data;
+    const daysMap: Record<string, number> = { day: 1, week: 7, month: 30 };
+    const cutoff = Date.now() - daysMap[this.mightPeriod] * 24 * 60 * 60 * 1000;
+    return data.filter((point) => new Date(point.utcDate || point.date).getTime() >= cutoff);
+  }
+
+  private initBerimondKingdomData(): void {
+    const berimondPoints = this.data['player_event_berimond_kingdom_history'];
+    // this.setGenericVariations(berimondPoints);
+    this.initEventOverlayChart('berimondKingdom', berimondPoints, '#00aaff');
+    const occurrences = this.eventOccurrences['berimondKingdom'] ?? [];
+    const { data, categories } = this.buildFinalScoresSeries(occurrences);
+    this.initFinalScoresChartOption('berimondKingdom-scores', data, categories, '#00aaff');
+    this.buildEventStats('berimondKingdom', occurrences);
+    this.buildEventCharts('berimondKingdom', data.length);
+  }
+
+  private initSamuraiHistoryData(): void {
+    const samuraiPoints = this.data['player_event_samurai_history'];
+    // this.setGenericVariations(samuraiPoints);
+    this.initEventOverlayChart('samurai', samuraiPoints, '#6a9420');
+    const occurrences = this.eventOccurrences['samurai'] ?? [];
+    const { data, categories } = this.buildFinalScoresSeries(occurrences);
+    this.initFinalScoresChartOption('samurai-scores', data, categories, '#6a9420');
+    this.buildEventStats('samurai', occurrences);
+    this.buildEventCharts('samurai', data.length);
+  }
+
+  private initBloodcrowHistoryData(): void {
+    const bloodcrowPoints = this.data['player_event_bloodcrow_history'];
+    // this.setGenericVariations(bloodcrowPoints);
+    this.initEventOverlayChart('bloodcrow', bloodcrowPoints, '#8e5da3');
+    const occurrences = this.eventOccurrences['bloodcrow'] ?? [];
+    const { data, categories } = this.buildFinalScoresSeries(occurrences);
+    this.initFinalScoresChartOption('bloodcrow-scores', data, categories, '#8e5da3');
+    this.buildEventStats('bloodcrow', occurrences);
+    this.buildEventCharts('bloodcrow', data.length);
+  }
+
+  private groupAquamarineMetrics(snapshots: ApiAquamarineSnapshot[]): Map<number, Array<[number, number]>> {
+    const metricSeries = new Map<number, Array<[number, number]>>();
+    for (const snapshot of snapshots) {
+      const ts = new Date(snapshot.collected_at).getTime();
+      for (const metric of snapshot.metrics) {
+        if (!this.AQUAMARINE_ALLOWED.includes(metric.metric_id)) continue;
+        let points = metricSeries.get(metric.metric_id);
+        if (!points) {
+          points = [];
+          metricSeries.set(metric.metric_id, points);
+        }
+        points.push([ts, metric.value]);
+      }
+    }
+    for (const points of metricSeries.values()) {
+      points.sort(([a], [b]) => a - b);
+    }
+    return metricSeries;
+  }
+
+  private initAquamarineCharts(): void {
+    const snapshots = this.aquamarineSnapshotsForMonth;
+    if (snapshots.length === 0) {
+      delete this.charts['aquamarine'];
+      return;
+    }
+
+    // Update last-updated timestamp for the selected month
+    let latestSnapshot = snapshots[0];
+    for (const s of snapshots) {
+      if (s.collected_at > latestSnapshot.collected_at) latestSnapshot = s;
+    }
+    const timestamp = latestSnapshot.metrics.find((m) => m.metric_id === 21)?.value;
+    this.aquamarineSnapshotsLastUpdated = new Date(timestamp ? timestamp * 1000 : Date.now());
+
+    const metricSeries = this.groupAquamarineMetrics(snapshots);
+
+    const metricIds = [...metricSeries.keys()].sort((a, b) => a - b);
+    const series: ApexAxisChartSeries = metricIds.map((metricId) => ({
+      name: this.translateService.instant(this.AQUAMARINE_METRIC_LABELS[metricId]) ?? `${metricId}`,
+      data: metricSeries.get(metricId) ?? [],
+      hidden: this.AQUAMARINE_HIDDEN_BY_DEFAULT.has(metricId),
+    }));
+
+    const colors = metricIds.map((id) => this.AQUAMARINE_METRIC_COLORS[id] ?? '#1f6f68');
+    this.initChartOption('aquamarine', series, colors);
+    this.charts['aquamarine'].fill = { type: 'solid', opacity: metricIds.map((id) => (id === 15 ? 0.28 : 0)) };
+    this.charts['aquamarine'].stroke = {
+      width: metricIds.map((id) => (id === 15 ? 3 : 2)),
+      dashArray: metricIds.map((id) => ({ 16: 0, 17: 6, 18: 2 })[id as 16 | 17 | 18] ?? 0),
+    };
+  }
+
+  private localHourOfSlot(startInstant: Date, index: number): number {
+    return new Date(startInstant.getTime() + index * MS_PER_HOUR).getHours();
+  }
+
+  private generateWeekHours(start: Date, end: Date): string[] {
+    const hours: string[] = [];
+    const current = new Date(start);
+    while (current.getTime() <= end.getTime()) {
+      hours.push(current.toISOString().slice(0, 16).replace('T', ' '));
+      current.setUTCHours(current.getUTCHours() + 1);
+    }
+    return hours;
+  }
+
+  private fillLootData(weekHours: string[], dates: string[], points: number[]): (number | null)[] {
+    const valueByHour = new Map<string, number>();
+    for (const [index, hour] of dates.entries()) {
+      if (!valueByHour.has(hour)) {
+        valueByHour.set(hour, points[index]);
+      }
+    }
+    let lastKnownIndex = -1;
+    for (const [index, hour] of weekHours.entries()) {
+      if (valueByHour.has(hour)) {
+        lastKnownIndex = index;
+      }
+    }
+    let lastValue: number | null = null;
+    return weekHours.map((hour, index) => {
+      if (index === 0) {
+        lastValue = 0;
+        return 0;
+      }
+      const value = valueByHour.get(hour);
+      if (value !== undefined) {
+        lastValue = value;
+        return value;
+      }
+      if (lastValue === null) {
+        return 0;
+      }
+      return lastKnownIndex >= 0 && index > lastKnownIndex ? null : lastValue;
+    });
+  }
+
+  private buildLootWeeklyScoresSeries(weeks: ApiPlayerEventOccurrence[]): { data: number[]; categories: string[] } {
+    const newestFirst = [...weeks].reverse();
+    return {
+      data: newestFirst.map((week) => Number(week.point)),
+      categories: newestFirst.map((week) =>
+        new Date(week.ended_at).getTime() > Date.now()
+          ? this.translateService.instant('Semaine courante')
+          : `${this.formatLootWeekRange(new Date(week.started_at))} (${this.getUnitByValue(Number(week.point))})`,
+      ),
+    };
+  }
+
+  private formatLootWeekRange(weekStart: Date): string {
+    const locale = this.languageService.getCurrentLang();
+    return this.translateService.instant('Semaine du 0 au 0', {
+      start: weekStart.toLocaleDateString(locale).slice(0, -5),
+      end: new Date(weekStart.getTime() + 6 * 24 * MS_PER_HOUR).toLocaleDateString(locale).slice(0, -5),
+    });
+  }
+
+  private initLootHistoryData(): void {
+    const maxPoints: { week: string; points: number }[] = [];
+    const weeklyTotals: ApiPlayerEventOccurrence[] = [];
+    const lootPoints = this.data['player_loot_history'];
+    if (!lootPoints || lootPoints.length === 0) {
+      return;
+    }
+    lootPoints.forEach((point) => {
+      if (point.utcDate) {
+        point.date = point.utcDate;
+      }
+    });
+    lootPoints.sort((a, b) => {
+      return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+    const reset = this.lootReset;
+    const weekStarts: number[] = [];
+    const allWeeksHours: string[][] = [];
+    const now = Date.now();
+    for (
+      let start = lootWeekStart(Date.parse(lootPoints[0].date), reset);
+      start <= now;
+      start = lootWeekEnd(start, reset)
+    ) {
+      weekStarts.push(start);
+      allWeeksHours.push(this.generateWeekHours(new Date(start), new Date(lootWeekEnd(start, reset) - MS_PER_HOUR)));
+    }
+
+    const dates = lootPoints.map((p) => {
+      const d = new Date(p.date);
+      d.setUTCMinutes(0, 0, 0);
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    });
+    const points = lootPoints.map((p) => Number(p.point));
+    const allWeeksData = allWeeksHours.map((weekHours) => this.fillLootData(weekHours, dates, points));
+    const colors = ['#bfb58f', '#cc9a12'];
+    const series = allWeeksData.map((fullWeek, index) => {
+      const weekStartDate = new Date(weekStarts[index]);
+      const maxPoint = Math.max(...fullWeek.filter((p): p is number => p !== null));
+      // A week holding a clock change lasts 167 or 169 hours; the overlay chart shows 168
+      const weekData = fullWeek.slice(0, HOURS_PER_WEEK);
+      maxPoints.push({
+        week: weekStartDate.toISOString().slice(0, 10),
+        points: maxPoint,
+      });
+      weeklyTotals.push({
+        started_at: weekStartDate.toISOString(),
+        ended_at: new Date(lootWeekEnd(weekStarts[index], reset) - 1).toISOString(),
+        point: maxPoint,
+      });
+      if (index === allWeeksData.length - 1) {
+        return {
+          name: this.translateService.instant('Semaine courante') + ' (' + this.getUnitByValue(maxPoint) + ')',
+          data: weekData,
+          color: colors[1],
+        };
+      }
+
+      if (index === allWeeksData.length - 2) {
+        return {
+          name: this.translateService.instant('Semaine précédente') + ' (' + this.getUnitByValue(maxPoint) + ')',
+          data: weekData,
+          color: '#5c4527',
+        };
+      }
+
+      return {
+        name: this.formatLootWeekRange(weekStartDate) + ' (' + this.getUnitByValue(maxPoint) + ')',
+        data: weekData,
+        color: '#9c8660',
+        hidden: true,
+      };
+    });
+
+    const days = [
+      this.translateService.instant('Dimanche'),
+      this.translateService.instant('Lundi'),
+      this.translateService.instant('Mardi'),
+      this.translateService.instant('Mercredi'),
+      this.translateService.instant('Jeudi'),
+      this.translateService.instant('Vendredi'),
+      this.translateService.instant('Samedi'),
+    ];
+    this.maxLootPointsByWeek = maxPoints;
+    const maxSeriesLength = Math.max(...series.map((s: any) => s.data.length));
+    for (const serie of series) {
+      if (serie.data.length < maxSeriesLength) {
+        const lastPoint = Math.max(...serie.data.filter((point): point is number => point !== null));
+        while (serie.data.length < maxSeriesLength) {
+          serie.data.push(lastPoint);
+        }
+      }
+    }
+    // Initialize the chart 'loot-heatmap' (heatmap loot history)
+    const seriesHeatmap: ApexAxisChartSeries = [];
+    const allValues: number[] = [];
+    const lastWeekStart = weekStarts.at(-1)!;
+    const dayLabels = Array.from(
+      { length: 7 },
+      (_, dayIndex) => days[new Date(lastWeekStart + (dayIndex * 24 + 12) * MS_PER_HOUR).getDay()],
+    );
+    const seriesNewestFirst = [...series].reverse();
+    seriesNewestFirst.forEach((weekSerie) => {
+      if (weekSerie.data.length === 0) return;
+      if (seriesHeatmap.length >= 25) return; // Limit to 25 weeks for UI performance
+      const dailyMax = new Map<number, number>();
+      weekSerie.data.forEach((point: number | null, hourIndex: number) => {
+        const dayIndex = Math.floor(hourIndex / 24);
+        if (!dailyMax.has(dayIndex)) {
+          dailyMax.set(dayIndex, 0);
+        }
+
+        if (point !== null) {
+          dailyMax.set(dayIndex, Math.max(dailyMax.get(dayIndex)!, point));
+        }
+      });
+      const heatmapData: { x: string; y: number }[] = [];
+      dailyMax.forEach((maxValue, dayIndex) => {
+        const xLabel = dayLabels[dayIndex] ?? days[0];
+        heatmapData.push({
+          x: xLabel,
+          y: maxValue,
+        });
+        allValues.push(maxValue);
+      });
+      seriesHeatmap.push({
+        name: weekSerie.name,
+        data: heatmapData,
+      });
+    });
+    const maxValue = allValues.length > 0 ? Math.max(...allValues) : 0;
+    // Initialize the chart 'loot-heatmap' (heatmap loot history)
+    this.initHeatmapChartOption('loot-heatmap', seriesHeatmap, colors);
+    this.charts['loot-heatmap'].plotOptions.heatmap!.colorScale!.ranges = this.buildHeatmapRanges(maxValue);
+    // Initialize the hourly activity rate chart 'loot-activity' (hourly activity rate loot history)
+    const lastWeeksData = allWeeksData.slice(-2);
+    const lastWeeksStart = new Date(weekStarts.at(-2) ?? weekStarts[0]);
+    const hourlyActivity = this.computeHourlyActivityRate(lastWeeksData.flat(), lastWeeksStart);
+    const seriesHourlyActivity: ApexAxisChartSeries = [
+      {
+        name: this.translateService.instant("Taux d'activité par heure"),
+        data: hourlyActivity,
+      },
+    ];
+    this.initHourlyActivityChart('hourly-activity', seriesHourlyActivity);
+    // Initialize the average gain per hour chart 'loot-average-gain' (average gain per hour loot history)
+    const avgGainPerHour = this.computeAverageGainPerHour(lastWeeksData.flat(), lastWeeksStart);
+    const seriesAvgGain: ApexAxisChartSeries = [
+      {
+        name: this.translateService.instant('Gain moyen par heure'),
+        data: avgGainPerHour,
+      },
+    ];
+    this.initAverageGainChart('avg-gain-hour', seriesAvgGain);
+    // Initialize the chart 'loot' (area loot history)
+    this.initChartOption('loot', seriesNewestFirst.slice(0, this.LOOT_OVERVIEW_WEEKS), colors);
+    this.styleOverlaidPeriods(this.charts['loot'], this.LOOT_OVERVIEW_WEEKS);
+    this.charts['loot-weeks'] = { ...this.charts['loot'], series: seriesNewestFirst };
+    this.styleOverlaidPeriods(this.charts['loot-weeks'], seriesNewestFirst.length);
+    this.spinnerLoadingByChart['loot-weeks'] = false;
+    const { data: weeklyScores, categories: weeklyLabels } = this.buildLootWeeklyScoresSeries(
+      this.eventOccurrences['loot'] ?? weeklyTotals,
+    );
+    this.initFinalScoresChartOption('loot-scores', weeklyScores, weeklyLabels, colors[1]);
+    this.buildEventCharts('loot', weeklyScores.length);
+    this.charts['loot'].xaxis.type = 'datetime';
+    const weekHoursReference = this.generateWeekHours(
+      new Date(weekStarts[0]),
+      new Date(weekStarts[0] + (HOURS_PER_WEEK - 1) * MS_PER_HOUR),
+    );
+    for (let index = 0; index < allWeeksHours.length; index++) {
+      allWeeksHours[index] = weekHoursReference;
+    }
+    this.charts['loot'].xaxis.categories = allWeeksHours.flat();
+    const labels = this.charts['loot'].xaxis.labels;
+    if (labels) {
+      labels.datetimeFormatter = {
+        year: 'yyyy',
+        month: '',
+        day: 'dddd',
+        hour: 'ddd HH:mm',
+        minute: 'HH:mm',
+      };
+      labels.format = 'dddd';
+    }
+    const needPMFormat = this.languageService.getCurrentLang() === 'en';
+    const tooltipX = this.charts['loot'].tooltip.x;
+    if (!tooltipX) return;
+    tooltipX.formatter = function (_value, { dataPointIndex }): string {
+      const dayName = days[(Math.floor(dataPointIndex / 24) + 1) % 7];
+      const hour = dataPointIndex % 24;
+      if (needPMFormat) {
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        return `${dayName} ${hour % 12 || 12}:00 ${ampm}`;
+      }
+      return `${dayName} ${hour.toString().padStart(2, '0')}h00`;
+    };
+    this.charts['loot'].chart.animations = {
+      enabled: false,
+    };
+    const yLabels = this.charts['loot'].yaxis.labels;
+    if (!yLabels) return;
+    yLabels.formatter = function (value): string {
+      return value === null ? '-' : formatThousands(value.toString());
+    };
+  }
+
+  /**
+   * This function computes the hourly activity rate based on the provided data.
+   * @param data An array of numbers (or nulls) representing the data points for which to compute the hourly activity rate
+   * @returns An array of hourly activity rates for each hour of the day (0-23) expressed as percentages
+   */
+  private computeHourlyActivityRate(data: (number | null)[], startInstant: Date): number[] {
+    const activityCount: number[] = Array.from({ length: 24 }, () => 0);
+    const totalCount: number[] = Array.from({ length: 24 }, () => 0);
+    for (let index = 1; index < data.length; index++) {
+      const current = data[index];
+      const previous = data[index - 1];
+      if (current === null || previous === null) continue;
+      const hour = this.localHourOfSlot(startInstant, index - 1);
+      totalCount[hour]++;
+      if (current > previous) {
+        activityCount[hour]++;
+      }
+    }
+    return activityCount.map((count, hour) =>
+      totalCount[hour] > 0 ? Math.round((count / totalCount[hour]) * 100) : 0,
+    );
+  }
+
+  /**
+   * This function computes the average gain per hour based on the provided data.
+   * It iterates through the data points, comparing each point with the previous one to calculate the gain.
+   * The gains are accumulated for each hour of the day, and the average gain is computed by dividing the total gain by the count of gains for that hour.
+   * @param data An array of numbers (or nulls) representing the data points for which to compute the average gain per hour
+   * @returns An array of average gains for each hour of the day (0-23)
+   */
+  private computeAverageGainPerHour(data: (number | null)[], startInstant: Date): number[] {
+    const gains: number[] = Array.from({ length: 24 }, () => 0);
+    const counts: number[] = Array.from({ length: 24 }, () => 0);
+    for (let index = 1; index < data.length; index++) {
+      const current = data[index];
+      const previous = data[index - 1];
+      if (current === null || previous === null) continue;
+
+      if (current > previous) {
+        const hour = this.localHourOfSlot(startInstant, index - 1);
+        gains[hour] += current - previous;
+        counts[hour]++;
+      }
+    }
+    return gains.map((sum, h) => (counts[h] > 0 ? Math.round(sum / counts[h]) : 0));
+  }
+
+  /**
+   * This function converts a value to a human-readable format with appropriate units.
+   * It checks the value and applies the appropriate unit (k, M, G, T) based on the size of the value.
+   * @param value The value to convert.
+   * @returns The converted value with the appropriate unit.
+   */
+  private getUnitByValue(value: number): string {
+    if (!value || value === 0 || typeof value !== 'number') {
+      return '0';
+    }
+    let unit = '';
+    if (value >= 1000 && value < 1_000_000) {
+      unit = 'k';
+      value /= 1000;
+    } else if (value >= 1_000_000 && value < 1_000_000_000) {
+      unit = 'M';
+      value /= 1_000_000;
+    } else if (value >= 1_000_000_000 && value < 1_000_000_000_000) {
+      unit = 'G';
+      value /= 1_000_000_000;
+    } else if (value >= 1_000_000_000_000) {
+      unit = 'T';
+      value /= 1_000_000_000_000;
+    }
+    return value.toFixed(2) + unit;
+  }
+
+  private generateEventSeries(eventData: [number, number][][]): ApexAxisChartSeries {
+    const series: ApexAxisChartSeries = [];
+    for (const event of eventData) {
+      const currentDate = new Date();
+      const lastEvent = event.at(-1);
+      const lastDate = lastEvent ? new Date(lastEvent[0]) : new Date();
+      lastDate.setHours(lastDate.getHours() + 3);
+      if (lastDate.getTime() < currentDate.getTime()) {
+        const locale = this.languageService.getCurrentLang();
+        const firstDate = new Date(event[0][0]);
+        const lastDateForName = lastEvent ? new Date(lastEvent[0]) : new Date();
+        const name = this.translateService.instant('Événement du 0 au 0', {
+          start: firstDate.toLocaleDateString(locale).slice(0, -5),
+          end: lastDateForName.toLocaleDateString(locale).slice(0, -5),
+        });
+        series.push({
+          name,
+          data: event,
+        });
+      } else {
+        series.push({
+          name: this.translateService.instant('Événement courant'),
+          data: event,
+        });
+      }
+    }
+    return series;
+  }
+
+  private groupEventDataByTimeGaps(
+    eventDataSegmentsReference: ApiGenericData[][],
+    data: EventGenericVariation[],
+    timeGap: number = 24 * 60 * 60 * 1000,
+  ): [number, number][][] {
+    let currentEvent: ApiGenericData[] = [];
+    for (let index = 0; index < data.length; index++) {
+      if (index > 0) {
+        const date1 = new Date(data[index - 1]['date']);
+        const date2 = new Date(data[index]['date']);
+        if (date2.getTime() - date1.getTime() > timeGap) {
+          if (currentEvent.length > 0) {
+            eventDataSegmentsReference ??= [];
+            eventDataSegmentsReference.push(currentEvent);
+          }
+          currentEvent = [];
+        }
+      }
+      currentEvent.push({
+        date: data[index]['date'],
+        point: data[index]['point'],
+      });
+    }
+    if (currentEvent.length > 0) {
+      if (!eventDataSegmentsReference) {
+        eventDataSegmentsReference = [];
+      }
+      eventDataSegmentsReference.push(currentEvent);
+    } else if (!eventDataSegmentsReference) {
+      eventDataSegmentsReference = [];
+    }
+    return eventDataSegmentsReference.map((event) => {
+      return event.map((event) => {
+        return [new Date(event['date']).getTime(), event['point']];
+      });
+    });
+  }
+
+  private getPointsAndDates(data: EventGenericVariation[]): { dates: string[]; points: number[] } {
+    const dates = data.map((point) => point.date.slice(0, Math.max(0, point.date.length - 3)));
+    const points = data.map((point) => point.point);
+    return { dates, points };
+  }
+
+  private async fillData(fragment: PlayerStatsTabs): Promise<void> {
+    this.setDefaultAlliance();
+    if (!this.stats) {
+      await this.initPlayerStats();
+      this.cdr.detectChanges();
+    }
+    if (fragment === 'glory' && this.currentPlayerTitle === null) {
+      this.gloryLoadState = 'loading';
+      this.cdr.detectChanges();
+      void this.getPlayerGloryTitle()
+        .then((titles) => {
+          this.currentPlayerTitle = titles[0];
+          this.currentTopXFameTitle = titles[1];
+          this.gloryLoadState = 'loaded';
+          this.cdr.detectChanges();
+        })
+        .catch(() => {
+          this.gloryLoadState = 'error';
+          this.cdr.detectChanges();
+        });
+    } else if (fragment === 'events') {
+      if (!this.playerId) return;
+      this.eventsLoadState = 'loading';
+      this.cdr.detectChanges();
+      void this.apiRestService.getEventsByPlayerId(this.playerId).then((response) => {
+        if (response.success) {
+          this.outerEvents = response.data.events.map((event) => ({
+            ...event,
+            from: this.utilitiesService.generateOuterRealmsEventFromDate(event.collect_date),
+            to: new Date(event.collect_date),
+          }));
+          this.eventsLoadState = 'loaded';
+        } else {
+          this.eventsLoadState = 'error';
+        }
+        this.cdr.detectChanges();
+      });
+    } else if (fragment === 'woa') {
+      if (!this.playerId) return;
+      this.woaLoadState = 'loading';
+      this.cdr.detectChanges();
+      void this.apiRestService.getWoaEventDataByPlayerId(this.playerId).then((response) => {
+        if (response.success) {
+          const data = response.data;
+          this.woaHistory = data.events.map((event) => ({
+            date: new Date(event.date),
+            point: event.point,
+            rank: event.rank,
+            type: 'woa',
+            from: this.utilitiesService.calculateWoaEventBeginTime(new Date(event.date)),
+            to: this.utilitiesService.calculateWoaEventEndTime(new Date(event.date)),
+          }));
+          this.woaSummary = this.buildWoaSummary(this.woaHistory, data.player, data.coverage);
+          this.woaLoadState = 'loaded';
+        } else {
+          this.woaSummary = null;
+          this.woaLoadState = 'error';
+        }
+        this.cdr.detectChanges();
+      });
+    } else if (fragment === 'aquamarine' && this.aquamarineLoadState === 'idle') {
+      if (!this.playerId) return;
+      this.aquamarineLoadState = 'loading';
+      this.cdr.detectChanges();
+      void this.apiRestService.getAquamarinePointsByPlayerId(this.playerId).then((response) => {
+        if (response.success) {
+          this.aquamarineSnapshots = response.data.snapshots || [];
+          if (this.aquamarineSnapshots.length > 0) {
+            const timestamp: number | undefined = response.data.snapshots
+              .at(-1)
+              ?.metrics.find((m) => m.metric_id === 21)?.value;
+            this.aquamarineSnapshotsLastUpdated = new Date(timestamp ? timestamp * 1000 : Date.now());
+            this.initAquamarineCharts();
+          }
+          this.aquamarineLoadState = 'loaded';
+        } else {
+          this.aquamarineLoadState = 'error';
+        }
+        this.cdr.detectChanges();
+      });
+    }
+    if (fragment === 'loot') {
+      // The heatmap and the two activity charts read months of history, where the overview card reads weeks
+      void this.ensureSeries('loot', this.LOOT_TAB_DAYS);
+    }
+    this.fillDataState = 'loaded';
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  private buildHeatmapRanges(maxValue: number): any[] {
+    const ranges: any[] = [];
+    ranges.push({
+      from: 0,
+      to: 0,
+      color: '#000000',
+      name: '0',
+    });
+
+    if (maxValue <= 0) {
+      return ranges;
+    }
+
+    const maxSteps = 10;
+    const bases = [1, 2, 5];
+    const maxPower = Math.floor(Math.log10(maxValue));
+    const thresholds: number[] = [];
+
+    for (let p = maxPower - 2; p <= maxPower + 1; p++) {
+      for (const base of bases) {
+        const value = base * Math.pow(10, p);
+        if (value > 0 && value < maxValue) {
+          thresholds.push(value);
+        }
+      }
+    }
+
+    thresholds.push(maxValue);
+    thresholds.sort((a, b) => a - b);
+    const unique = [...new Set(thresholds)];
+    const step = Math.ceil(unique.length / maxSteps);
+    const selected = unique.filter((_, index) => index % step === 0);
+    const colors = [
+      '#FFF3E0',
+      '#FFE0B2',
+      '#FFCC80',
+      '#FFB74D',
+      '#FFA726',
+      '#FF9800',
+      '#FB8C00',
+      '#F57C00',
+      '#EF6C00',
+      '#E65100',
+    ];
+
+    let from = 1;
+
+    selected.forEach((to, index) => {
+      ranges.push({
+        from,
+        to,
+        color: colors[Math.min(index, colors.length - 1)],
+        name: `${this.formatValue(from)} – ${this.formatValue(to)}`,
+      });
+      from = to + 1;
+    });
+
+    return ranges;
+  }
+
+  private formatValue(value: number): string {
+    if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} G`;
+    if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(1)} K`;
+    return value.toString();
+  }
+
+  private async initPlayerData(playerId: number): Promise<void> {
+    if (this.fillPlayerHistoryState !== 'idle') return;
+    this.fillPlayerHistoryState = 'loading';
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+
+    const [allianceUpdatesResponse, playerUpdatesResponse] = await Promise.all([
+      this.apiRestService.getAllianceUpdatesByPlayerId(playerId),
+      this.apiRestService.getPlayerUpdatesByPlayerId(playerId),
+    ]);
+    this.applyAllianceUpdates(allianceUpdatesResponse);
+    this.applyPlayerNameUpdates(playerUpdatesResponse);
+
+    this.fillPlayerHistoryState = 'loaded';
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  private applyAllianceUpdates(response: ApiResponse<ApiAllianceUpdatesByPlayerId>): void {
+    if (response.success === false) {
+      this.allianceUpdates = null;
+      return;
+    }
+    const updates = response.data?.updates;
+    if (!updates || updates.length === 0) {
+      this.setDefaultAlliance();
+    } else {
+      updates.sort((a, b) => this.compareDate(a, b));
+      const oldestUpdate = updates.at(-1);
+      this.allianceUpdates = updates.map((update, index) =>
+        this.toAllianceUpdate(update, index > 0 ? updates[index - 1]['date'] : null),
+      );
+      if (oldestUpdate) {
+        this.allianceUpdates.push({
+          id: oldestUpdate['old_alliance_id'],
+          date: null,
+          alliance: oldestUpdate['old_alliance_name'],
+          original_new_alliance_name:
+            oldestUpdate['original_old_alliance_name'] === oldestUpdate['old_alliance_name']
+              ? null
+              : oldestUpdate['original_old_alliance_name'],
+          duration: '-',
+          durationValue: 0,
+        });
+      }
+    }
+  }
+
+  private toAllianceUpdate(update: ApiAllianceUpdates, previousDate: string | null): AlliancesUpdates {
+    const { value, durationValue } = this.getDateDiff(update['date'], previousDate ?? new Date().toISOString());
+    return {
+      id: update['new_alliance_id'],
+      date: update['date'],
+      alliance: update['new_alliance_name'],
+      original_new_alliance_name:
+        update['original_new_alliance_name'] === update['new_alliance_name']
+          ? null
+          : update['original_new_alliance_name'],
+      duration: previousDate ? value : this.translateService.instant('depuis') + ' ' + value,
+      durationValue,
+    };
+  }
+
+  private applyPlayerNameUpdates(response: ApiResponse<ApiPlayerUpdatesByPlayerId>): void {
+    if (response.success === false) {
+      this.playerUpdates = null;
+      return;
+    }
+    const updates = response.data?.updates;
+    if (!updates || updates.length === 0) return;
+
+    updates.sort((a, b) => this.compareDate(a, b));
+    const oldestUpdate = updates.at(-1);
+    this.playerUpdates = updates.map((update, index) => ({
+      date: update['date'],
+      player: update['new_player_name'],
+      duration: this.formatUpdateDuration(update['date'], index > 0 ? updates[index - 1]['date'] : null),
+    }));
+    if (oldestUpdate) {
+      this.playerUpdates.push({ date: null, player: oldestUpdate['old_player_name'], duration: '-' });
+    }
+  }
+
+  private formatUpdateDuration(date: string, previousDate: string | null): string {
+    if (previousDate) return this.getDateDiff(date, previousDate).value;
+    return this.translateService.instant('depuis') + ' ' + this.getDateDiff(date, new Date().toISOString()).value;
+  }
+
+  private fillQuantity(): void {
+    this.stats?.castles.forEach((castle: number[]) => {
+      const target = castle[3];
+      switch (target) {
+        case CastleType.CASTLE:
+        case CastleType.REALM_CASTLE: {
+          this.quantity.castle++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.OUTPOST: {
+          this.quantity.outpost++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.MONUMENT: {
+          this.quantity.monument++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.LABORATORY: {
+          this.quantity.laboratory++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.CAPITAL: {
+          this.quantity.capital++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.ROYAL_TOWER: {
+          this.quantity.royalTower++;
+          this.quantity.patriarch++;
+          break;
+        }
+        case CastleType.CITY: {
+          this.quantity.city++;
+          this.quantity.patriarch++;
+          break;
+        }
+        default: {
+          break;
+        }
+      }
+    });
+  }
+
+  private setDefaultAlliance(): void {
+    if (!this.allianceUpdates || this.allianceUpdates.length > 0) return;
+    this.allianceUpdates = [
+      {
+        id: this.allianceId ?? null,
+        date: null,
+        alliance: this.allianceName ?? null,
+        original_new_alliance_name: this.allianceName ?? null,
+        duration: '-',
+        durationValue: 0,
+      },
+    ];
+    this.cdr.detectChanges();
+  }
+
+  private observeCharts(): void {
+    this.chartContainers.forEach((chart) => {
+      const element = chart.nativeElement as HTMLElement;
+
+      if (!element.dataset['observed']) {
+        element.dataset['observed'] = 'true';
+        this.observer.observe(element);
+      }
+    });
+  }
+
+  private clearChartsObservers(): void {
+    this.observer.disconnect();
+    this.chartContainers.forEach((chart) => {
+      const element = chart.nativeElement as HTMLElement;
+      delete element.dataset['observed'];
+    });
+  }
+}

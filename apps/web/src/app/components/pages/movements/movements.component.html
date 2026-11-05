@@ -1,0 +1,338 @@
+<div class="container my-3 movements">
+  <div class="row">
+    <div class="col-12" [ngClass]="{'loading': isInLoading}">
+      <app-search-form #searchForm [isInLoading]="isInLoading" [formFilters]="formFilters"
+        [inputTip]="'Rechercher un joueur ou une alliance' | translate" [searchTypes]="{
+          player: true,
+          alliance: true
+        }"
+        [exportDataEnabled]="true"
+        (exportData)="exportData()"
+        (searchAlliance)="searchAlliance($event)"
+      (searchPlayer)="searchPlayer($event)"></app-search-form>
+
+      <div class="flex flex-col justify-between gap-6 mt-2">
+        <app-table [sort]="''" [reverse]="false" [isInLoading]="isInLoading" [maxPage]="maxPage!" [page]="page"
+          [search]="search" [iconCaptions]="true" [headers]="[
+          ['playerName', 'Pseudonyme' | translate, '', true],
+          ['allianceName', 'Alliance' | translate, '/assets/min-alliance.png', true],
+          ['level', 'Niveau' | translate, '/assets/lvl.png', true],
+          ['pp', 'Points de puissance' | translate, '/assets/pp1.png', true],
+          ['positionOld', 'Description' | translate, '', true],
+          ['date', 'Date' | translate, '', true],
+          ['actions', '', '', true]
+        ]" (navigateToPage)="navigateTo($event)" (previousPage)="previousPage()" (nextPage)="nextPage()">
+          @if (movements.length === 0 && !isInLoading) {
+            <tr>
+              <td colspan="10" class="no-data">{{ 'Aucun mouvement trouvé' | translate }}</td>
+            </tr>
+          }
+          @for (movement of movements; track movement) {
+            <tr>
+              <td class="col-rank">
+                <span class="mobile-only">#</span>
+                {{ movement.rank }}
+              </td>
+              <td class="col-name">
+                @if (movement.playerId) {
+                  <a [routerLink]="['/', 'player', movement.playerId]" class="name name-link">{{ movement.player }}</a>
+                } @else {
+                  <span class="name">{{ movement.player }}</span>
+                }
+              </td>
+              <td class="text-center">
+                <span class="cell-label">{{ 'Alliance' | translate }}</span>
+                @if (movement.allianceId && movement.alliance) {
+                  <a [routerLink]="['/', 'alliance', movement.allianceId]" class="name-link">{{ movement.alliance }}</a>
+                } @else {
+                  {{ movement.alliance ?? '-' }}
+                }
+              </td>
+              <td class="col-level text-center">
+                <div class="level-box" [ngClass]="{ 'level-legendary': movement.legendaryLevel }">
+                  <span class="level-main">{{movement.level}}</span>
+                  @if (movement.legendaryLevel) {
+                    <div class="level-separator"></div>
+                    <span class="level-legendary" [attr.data-level]="movement.legendaryLevel">
+                      {{ movement.legendaryLevel }}
+                    </span>
+                  }
+                </div>
+              </td>
+              <td class="col-might text-center">
+                <span class="cell-label">{{ 'Puissance' | translate }}</span>
+                {{ (movement.might ? movement.might : 0) | formatNumber }}
+              </td>
+              <td class="col-grow">
+                <div class="movement-description">
+                  <span class="movement-icon">
+                    <img [src]="'/assets/castle' + movement.type + '.png'" class="movement-castle"
+                      [title]="getCastleType(movement.type) | translate" [alt]="getCastleType(movement.type) | translate">
+                    <span class="movement-action" [innerHTML]="getDescription(movement.type, movement.positionOld, movement.positionNew).image"></span>
+                  </span>
+                  <span>{{ ((getDescription(movement.type, movement.positionOld, movement.positionNew).keyword) | translate) + ' '
+                    + getDescription(movement.type, movement.positionOld, movement.positionNew).description }}</span>
+                </div>
+              </td>
+              <td class="col-footer text-center" [title]="movement.date | date">{{ movement.date | date: ('Date_1' | translate)}}</td>
+              <td class="col-actions">
+                <div class="action-buttons d-flex justify-content-center">
+                  @if (movement.playerId) {
+                    <a [routerLink]="['/', 'player', movement.playerId]" class="action-button"
+                      [attr.aria-label]="'Analyser le joueur' | translate" [attr.data-tooltip]="'Analyser le joueur' | translate">
+                      <img src="/assets/icon_analyze.png" alt="" height="24" class="btn-icon">
+                    </a>
+                  } @else {
+                    <a [routerLink]="['/', 'players']" [queryParams]="{ player: movement.player }" class="action-button"
+                      [attr.aria-label]="'Voir le joueur' | translate" [attr.data-tooltip]="'Voir le joueur' | translate">
+                      <img src="/assets/icon_search.png" alt="" height="24" class="btn-icon">
+                    </a>
+                  }
+                  <a [routerLink]="['/', 'castles']" [queryParams]="{ search: movement.player }" class="action-button"
+                    [attr.aria-label]="'Voir les châteaux' | translate" [attr.data-tooltip]="'Voir les châteaux' | translate">
+                    <img src="/assets/icon_castles.png" alt="" height="24" class="btn-icon">
+                  </a>
+                </div>
+              </td>
+            </tr>
+          }
+        </app-table>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="filtersModal" tabindex="-1" aria-labelledby="filtersModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="filtersModalLabel">
+            &nbsp;<i class="fa-solid fa-filter"></i>{{ 'Filtrer les résultats' | translate}}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+          [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <div class="filters-container">
+            <div class="row">
+              <!-- Castle type -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group [label]="'Type de position' | translate">
+                  <span field prefix>
+                    <img [src]="'/assets/castle' + formFilters.castleType + '.png'"
+                      [attr.alt]="'Type de position' | translate" [title]="'Type de position' | translate">
+                  </span>
+                  <select field [(ngModel)]="formFilters.castleType" [attr.aria-label]="'Type de position' | translate">
+                    <option value="null">{{ 'Tous' | translate }}</option>
+                    <option value="1">{{ 'Chateau principal' | translate }}</option>
+                    <option value="3">{{ 'Capitale' | translate }}</option>
+                    <option value="4">{{ 'Avant-poste' | translate }}</option>
+                    <option value="22">{{ 'Cité marchande' | translate }}</option>
+                    <option value="23">{{ 'Tour royale' | translate }}</option>
+                    <option value="26">{{ 'Monument' | translate }}</option>
+                    <option value="28">{{ 'Laboratoire' | translate }}</option>
+                  </select>
+                </app-modal-form-group>
+              </div>
+              <!-- Movement type -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group [label]="'Type de mouvement' | translate">
+                  <span field prefix>
+                    <img [src]="
+                      formFilters.movementType === null ? '/assets/castlenull.png' :
+                      formFilters.movementType === '1' ? '/assets/new-castle.png' :
+                      formFilters.movementType === '2' ? '/assets/ruins.png' :
+                      '/assets/moving.png'"
+                      [attr.alt]="'Type de mouvement' | translate" [title]="'Type de mouvement' | translate">
+                  </span>
+                  <select field [(ngModel)]="formFilters.movementType" [attr.aria-label]="'Type de mouvement' | translate">
+                    <option value="null">{{ 'Tous' | translate }}</option>
+                    <option value="1">{{ 'Apparition' | translate }}</option>
+                    <option value="2">{{ 'Disparition' | translate }}</option>
+                    <option value="3">{{ 'Déménagement' | translate }}</option>
+                  </select>
+                </app-modal-form-group>
+              </div>
+            </div>
+            <hr>
+            <div class="row">
+              <!-- Honor -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/honor.png" [attr.alt]="'Honneur' | translate"
+                      [title]="'Filtrer par point d\'honneur' | translate">
+                  </span>
+                  <input field type="text" id="honorMin"
+                    [value]="displayFormValues.honor.min" (focus)="onGenericFocus('min', 'honor')"
+                    (blur)="onGenericBlur('min', 'honor')" (input)="onGenericInput('min', 'honor', $event)"
+                    [title]="formFilters.minHonor" [placeholder]="'Honneur min.' | translate" [attr.aria-label]="'Honneur min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="honorMax"
+                    [value]="displayFormValues.honor.max" (focus)="onGenericFocus('max', 'honor')"
+                    (blur)="onGenericBlur('max', 'honor')" (input)="onGenericInput('max', 'honor', $event)"
+                    [title]="formFilters.maxHonor" [placeholder]="'Honneur max.' | translate" [attr.aria-label]="'Honneur max.' | translate">
+                </app-modal-form-group>
+              </div>
+              <!-- Might -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/pp1.png" [attr.alt]="'Puissance' | translate"
+                      [title]="'Filtrer par point de puissance' | translate">
+                  </span>
+                  <input field type="text" id="mightMin"
+                    [value]="displayFormValues.might.min" (focus)="onGenericFocus('min', 'might')"
+                    (blur)="onGenericBlur('min', 'might')" (input)="onGenericInput('min', 'might', $event)"
+                    [title]="formFilters.minMight" [placeholder]="'Puissance min' | translate" [attr.aria-label]="'Puissance min' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="mightMax"
+                    [value]="displayFormValues.might.max" (focus)="onGenericFocus('max', 'might')"
+                    (blur)="onGenericBlur('max', 'might')" (input)="onGenericInput('max', 'might', $event)"
+                    [title]="formFilters.maxMight" [placeholder]="'Puissance max' | translate" [attr.aria-label]="'Puissance max' | translate">
+                </app-modal-form-group>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <!-- Loot -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/loot.png" [attr.alt]="'Pillage' | translate"
+                      [title]="'Filtrer par point de pillage' | translate">
+                  </span>
+                  <input field type="text" id="lootMin"
+                    [value]="displayFormValues.loot.min" (focus)="onGenericFocus('min', 'loot')"
+                    (blur)="onGenericBlur('min', 'loot')" (input)="onGenericInput('min', 'loot', $event)"
+                    [title]="formFilters.minLoot" [placeholder]="'Pillage min.' | translate" [attr.aria-label]="'Pillage min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="lootMax"
+                    [value]="displayFormValues.loot.max" (focus)="onGenericFocus('max', 'loot')"
+                    (blur)="onGenericBlur('max', 'loot')" (input)="onGenericInput('max', 'loot', $event)"
+                    [title]="formFilters.maxLoot" [placeholder]="'Pillage max.' | translate" [attr.aria-label]="'Pillage max.' | translate">
+                </app-modal-form-group>
+              </div>
+              <!-- Level -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/lvl.png" [attr.alt]="'Niveau' | translate"
+                      [title]="'Filtrer par niveau' | translate">
+                  </span>
+                  <input field type="text" id="levelMin"
+                    [(ngModel)]="formFilters.minLevel" [title]="formFilters.minLevel"
+                    [placeholder]="'Niveau min' | translate" [attr.aria-label]="'Niveau min' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="levelMax"
+                    [(ngModel)]="formFilters.maxLevel" [title]="formFilters.maxLevel"
+                    [placeholder]="'Niveau max' | translate" [attr.aria-label]="'Niveau max' | translate">
+                </app-modal-form-group>
+              </div>
+            </div>
+            <div class="row mt-1">
+              <!-- Fame (glory) -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/glory.png" [attr.alt]="'Filtrer par gloire' | translate"
+                      [title]="'Filtrer par gloire' | translate">
+                  </span>
+                  <input field type="text" id="fameMin"
+                    [value]="displayFormValues.fame.min" (focus)="onGenericFocus('min', 'fame')"
+                    (blur)="onGenericBlur('min', 'fame')" (input)="onGenericInput('min', 'fame', $event)"
+                    [title]="formFilters.minFame" [placeholder]="'Gloire min.' | translate" [attr.aria-label]="'Gloire min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="fameMax"
+                    [value]="displayFormValues.fame.max" (focus)="onGenericFocus('max', 'fame')"
+                    (blur)="onGenericBlur('max', 'fame')" (input)="onGenericInput('max', 'fame', $event)"
+                    [title]="formFilters.maxFame" [placeholder]="'Gloire max.' | translate" [attr.aria-label]="'Gloire max.' | translate">
+                </app-modal-form-group>
+              </div>
+              <!-- Castle count -->
+              <div class="col-12 col-sm my-1">
+                <app-modal-form-group class="compact">
+                  <span field prefix>
+                    <img src="/assets/castle4.png" [attr.alt]="'Châteaux' | translate"
+                      [title]="'Filtrer par nombre de châteaux' | translate">
+                  </span>
+                  <input field type="text" id="castleCountMin"
+                    [value]="displayFormValues.castleCount.min" (focus)="onGenericFocus('min', 'castleCount')"
+                    (blur)="onGenericBlur('min', 'castleCount')" (input)="onGenericInput('min', 'castleCount', $event)"
+                    [title]="formFilters.castleCountMin" [placeholder]="'Châteaux min.' | translate" [attr.aria-label]="'Châteaux min.' | translate">
+                  <span field separator>
+                    <lucide-icon [img]="ArrowBigRightDash" [size]="16"></lucide-icon>
+                  </span>
+                  <input field type="text" id="castleCountMax"
+                    [value]="displayFormValues.castleCount.max" (focus)="onGenericFocus('max', 'castleCount')"
+                    (blur)="onGenericBlur('max', 'castleCount')" (input)="onGenericInput('max', 'castleCount', $event)"
+                    [title]="formFilters.castleCountMax" [placeholder]="'Châteaux max.' | translate" [attr.aria-label]="'Châteaux max.' | translate">
+                </app-modal-form-group>
+              </div>
+            </div>
+              <div class="mt-1">
+                <div class="filter-switch-list mt-3">
+                  <div class="filter-switch">
+                    <span class="filter-switch-label"><img src="/assets/min-alliance.png" alt="" [title]="'Filtrer par alliance' | translate">{{ 'Alliance' | translate }}</span>
+                    <div class="filter-switch-options" role="radiogroup" [attr.aria-label]="'Alliance' | translate">
+                      <input type="radio" class="filter-switch-input" id="noAlliance" name="alliance" value="-1" [(ngModel)]="formFilters.allianceFilter">
+                      <label class="filter-switch-option" for="noAlliance">{{ 'Pas de filtre' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="alliance1" name="alliance" value="1" [(ngModel)]="formFilters.allianceFilter">
+                      <label class="filter-switch-option is-filter" for="alliance1">{{ 'Avec alliance' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="alliance0" name="alliance" value="0" [(ngModel)]="formFilters.allianceFilter">
+                      <label class="filter-switch-option is-filter" for="alliance0">{{ 'Sans alliance' | translate }}</label>
+                    </div>
+                  </div>
+                  <div class="filter-switch">
+                    <span class="filter-switch-label"><img src="/assets/peace.png" alt="" [title]="'Filtrer par protection' | translate">{{ 'Protection' | translate }}</span>
+                    <div class="filter-switch-options" role="radiogroup" [attr.aria-label]="'Protection' | translate">
+                      <input type="radio" class="filter-switch-input" id="noPeace" name="peace" value="-1" [(ngModel)]="formFilters.protectionFilter">
+                      <label class="filter-switch-option" for="noPeace">{{ 'Pas de filtre' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="peace1" name="peace" value="1" [(ngModel)]="formFilters.protectionFilter">
+                      <label class="filter-switch-option is-filter" for="peace1">{{ 'En protection' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="peace0" name="peace" value="0" [(ngModel)]="formFilters.protectionFilter">
+                      <label class="filter-switch-option is-filter" for="peace0">{{ 'Hors protection' | translate }}</label>
+                    </div>
+                  </div>
+                  <div class="filter-switch">
+                    <span class="filter-switch-label"><img src="/assets/error.png" alt="" [title]="'Filtrer par banissement' | translate">{{ 'Banissement' | translate }}</span>
+                    <div class="filter-switch-options" role="radiogroup" [attr.aria-label]="'Banissement' | translate">
+                      <input type="radio" class="filter-switch-input" id="noBan" name="ban" value="-1" [(ngModel)]="formFilters.banFilter">
+                      <label class="filter-switch-option" for="noBan">{{ 'Pas de filtre' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="ban1" name="ban" value="1" [(ngModel)]="formFilters.banFilter">
+                      <label class="filter-switch-option is-filter" for="ban1">{{ 'Banni' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="ban0" name="ban" value="0" [(ngModel)]="formFilters.banFilter">
+                      <label class="filter-switch-option is-filter" for="ban0">{{ 'Non banni' | translate }}</label>
+                    </div>
+                  </div>
+                  <div class="filter-switch">
+                    <span class="filter-switch-label"><img src="/assets/compass.png" alt="" [title]="'Filtrer par joueur inactif (N\'étant pas sur la carte)' | translate">{{ 'Inactif' | translate }}</span>
+                    <div class="filter-switch-options" role="radiogroup" [attr.aria-label]="'Inactif' | translate">
+                      <input type="radio" class="filter-switch-input" id="noInactive" name="inactive" value="-1" [(ngModel)]="formFilters.inactiveFilter">
+                      <label class="filter-switch-option" for="noInactive">{{ 'Pas de filtre' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="inactive1" name="inactive" value="0" [(ngModel)]="formFilters.inactiveFilter">
+                      <label class="filter-switch-option is-filter" for="inactive1">{{ 'Inactif' | translate }}</label>
+                      <input type="radio" class="filter-switch-input" id="inactive0" name="inactive" value="1" [(ngModel)]="formFilters.inactiveFilter">
+                      <label class="filter-switch-option is-filter" for="inactive0">{{ 'Actif' | translate }}</label>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-actions">
+                  <button type="button" class="modal-action primary" (click)="applyFilters()" data-bs-dismiss="modal">
+                    <i class="fa-solid fa-check"></i>
+                    <span>{{ 'Appliquer les filtres' | translate }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>

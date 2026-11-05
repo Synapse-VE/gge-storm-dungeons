@@ -1,0 +1,40 @@
+import { Component, OnDestroy, AfterViewInit, inject, ChangeDetectionStrategy, ChangeDetectorRef } from '@angular/core';
+import { Router } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
+import { Subject } from 'rxjs';
+import { CURRENT } from '../rename.token';
+import { TitleCasePipe } from '@angular/common';
+
+@Component({
+  imports: [TranslateModule, TitleCasePipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  selector: 'app-renames-switcher',
+  templateUrl: './renames-switcher.component.html',
+  styleUrls: ['./renames-switcher.component.css'],
+})
+export class RenamesSwitcherComponent implements AfterViewInit, OnDestroy {
+  public current = inject(CURRENT, { optional: true });
+  public currentViewType?: 'players' | 'alliances';
+
+  private readonly destroy$ = new Subject<void>();
+  private readonly router = inject(Router);
+  private readonly cdr = inject(ChangeDetectorRef);
+
+  public ngAfterViewInit(): void {
+    const inValue = this.current;
+    this.currentViewType = inValue as 'players' | 'alliances';
+    this.cdr.detectChanges();
+  }
+
+  public ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  public go(type: 'players' | 'alliances'): void {
+    this.currentViewType = type;
+    void this.router.navigate(['/renames', type]);
+    this.cdr.markForCheck();
+  }
+}

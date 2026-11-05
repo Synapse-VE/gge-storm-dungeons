@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-*/
+.angular/
+.env
+.shots/
+.chrome-*/
+.chrome-home/
+*.log
+apps/collector/dist/
+apps/web/dist/
+apps/web/dist-*/
+apps/web/.angular/
+apps/empire-api/.env

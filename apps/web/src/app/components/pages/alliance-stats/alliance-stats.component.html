@@ -1,0 +1,684 @@
+@if (isInLoading) {
+  <output class="alliance-hero alliance-hero--skeleton"
+    [attr.aria-label]="'Chargement' | translate">
+    <div class="alliance-hero-backdrop" aria-hidden="true"></div>
+    <div class="container-fluid container-xxl alliance-stats-container mb-5 mb-lg-3" aria-hidden="true">
+      <span class="gge-skeleton alliance-skeleton-title"></span>
+      <span class="gge-skeleton alliance-skeleton-badge"></span>
+      <div class="stat-ledgers">
+        @for (rows of skeletonLedgers; track $index) {
+          <div class="stat-ledger stat-ledger--skeleton" [style.--i]="$index">
+            <div class="stat-ledger-header">
+              <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-icon"></span>
+              <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-label"></span>
+            </div>
+            @for (row of rows; track $index) {
+              <div class="stat-ledger-row">
+                <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-change"></span>
+                <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-value"></span>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </output>
+  <div class="alliance-tabs alliance-tabs--skeleton mt-5" aria-hidden="true">
+    <div class="alliance-tabs-scroller">
+      @for (tab of tabs; track tab.key) {
+        <span class="alliance-tab alliance-tab--skeleton">
+          <span class="gge-skeleton alliance-skeleton-tab"></span>
+        </span>
+      }
+    </div>
+  </div>
+  <div class="alliances-stats-content pb-3 pt-3" aria-hidden="true">
+    <div class="container pt-3">
+      @for (placeholder of skeletonRows; track $index) {
+        <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-line"></span>
+      }
+    </div>
+  </div>
+}
+
+@if (!isInLoading) {
+  <section class="alliance-hero">
+    <app-layered-scene scene="council" class="alliance-hero-backdrop" aria-hidden="true" />
+    <div class="container-fluid container-xxl alliance-stats-container mb-5 mb-lg-3">
+    <h2 class="title">{{ allianceName }}</h2>
+    <span class="badge bg-custom-font mt-3" [ngClass]="{ 'd-none': !lastUpdate }">
+      <i class="fas fa-sync-alt"></i>
+      <em class="ms-1">{{ 'Données récupérées le' | translate: { date: (lastUpdate | date: ('Date_5' | translate)) }
+      }}</em>
+    </span>
+    <a class="badge bg-custom-font alliance-compare-link mt-3 ms-2" [routerLink]="['/compare', 'alliances']"
+      [queryParams]="{ a: allianceId }">
+      <i class="fas fa-scale-balanced"></i>
+      <span class="ms-1">{{ 'Comparer' | translate }}</span>
+    </a>
+    <button type="button" class="badge bg-custom-font alliance-compare-link alliance-share-button mt-3 ms-2"
+      aria-haspopup="dialog" (click)="allianceShare.open()">
+      <i class="fas fa-share-nodes"></i>
+      <span class="ms-1">{{ 'Partager' | translate }}</span>
+    </button>
+    <button type="button" class="badge bg-custom-font alliance-compare-link alliance-share-button mt-3 ms-2"
+      [attr.aria-pressed]="isFollowingAlliance()" (click)="toggleFollowAlliance()">
+      <i class="fas fa-star"></i>
+      <span class="ms-1">{{ (isFollowingAlliance() ? 'follow.unfollow' : 'follow.follow') | translate }}</span>
+    </button>
+    <app-share-link #allianceShare="shareLink" subject="alliance" [subjectId]="allianceId" [name]="allianceName" />
+    <div class="stat-ledgers">
+      @for (ledger of ledgers; track ledger.titleKey; let i = $index) {
+        <section class="stat-ledger" [style.--i]="i">
+          <header class="stat-ledger-header">
+            <img class="stat-ledger-icon" [src]="ledger.icon" alt="" />
+            <h3 class="stat-ledger-title">{{ ledger.titleKey | translate }}</h3>
+          </header>
+          <dl class="stat-ledger-rows">
+            @for (row of ledger.rows; track row.labelKey) {
+              <div class="stat-ledger-row">
+                <dt class="stat-ledger-label">{{ row.labelKey | translate }}</dt>
+                <dd class="stat-ledger-figure">
+                  <span class="stat-ledger-value">{{ row.value }}</span>
+                  @if (row.detail; as detail) {
+                    <span class="stat-ledger-detail" [class.is-up]="detail.trend === 'up'"
+                      [class.is-down]="detail.trend === 'down'">
+                      @if (detail.trend === 'up') {
+                        <span class="stat-ledger-trend" aria-hidden="true">▲</span>
+                      } @else if (detail.trend === 'down') {
+                        <span class="stat-ledger-trend" aria-hidden="true">▼</span>
+                      }
+                      @if (detail.prefixKey) {
+                        {{ detail.prefixKey | translate }} :
+                      }
+                      {{ detail.value }}{{ detail.suffixKey ? (detail.suffixKey | translate) : '' }}
+                    </span>
+                  }
+                </dd>
+              </div>
+            }
+          </dl>
+        </section>
+      }
+      @if (tournamentBadges.length > 0) {
+        <section class="stat-ledger" [style.--i]="ledgers.length">
+          <header class="stat-ledger-header">
+            <img class="stat-ledger-icon" src="/assets/gt/division5.png" alt="" />
+            <h3 class="stat-ledger-title">{{ 'Tournois' | translate }}</h3>
+          </header>
+          <dl class="stat-ledger-rows">
+            @for (badge of tournamentBadges; track badge.route) {
+              <div class="stat-ledger-row">
+                <dt class="stat-ledger-label">{{ badge.labelKey | translate }}</dt>
+                <dd class="stat-ledger-figure">
+                  <a class="stat-ledger-division" [routerLink]="badge.route" [queryParams]="badge.queryParams">
+                    <app-division-badge [division]="badge.standing.division" [nameKey]="badge.divisionNameKey"
+                      [size]="26" />
+                    <span class="stat-ledger-value">{{ badge.divisionNameKey | translate }}</span>
+                  </a>
+                  <span class="stat-ledger-detail">
+                    {{ 'Sous-division' | translate }} {{ badge.standing.subdivision }} · #{{ badge.standing.rank }}
+                  </span>
+                </dd>
+              </div>
+            }
+          </dl>
+        </section>
+      }
+    </div>
+    </div>
+  </section>
+}
+
+
+@if (!isInLoading) {
+  <nav class="alliance-tabs mt-5" [attr.aria-label]="'Alliance' | translate">
+    <div class="alliance-tabs-scroller pt-1">
+      <div class="alliance-tab-list" role="tablist" [attr.aria-label]="'Alliance' | translate">
+        @for (tab of tabs; track tab.key) {
+          <button type="button" class="alliance-tab" role="tab" [class.active]="selectedTab === tab.key"
+            [attr.aria-selected]="selectedTab === tab.key" (click)="changeTab(tab.key)" title="{{ tab.label | translate }}">
+            <lucide-icon class="alliance-tab-icon" [img]="tab.icon" [size]="18"></lucide-icon>
+            <span class="alliance-tab-label">{{ tab.label | translate }}</span>
+          </button>
+        }
+      </div>
+      <a class="alliance-tab alliance-tab-link" [href]="'/map/' + allianceId" target="_blank" rel="noopener"
+        title="{{ 'Carte' | translate }}">
+        <lucide-icon class="alliance-tab-icon" [img]="Earth" [size]="18"></lucide-icon>
+        <span class="alliance-tab-label">{{ 'Carte' | translate }}</span>
+        <i class="fa-solid fa-arrow-up-right-from-square alliance-tab-external"></i>
+      </a>
+    </div>
+  </nav>
+}
+
+@if (!isInLoading) {
+  <div [ngClass]="selectedTab === 'movements' ? 'd-block' : 'd-none'" class="alliances-stats-content pb-3 pt-3"
+    >
+    <div class="container movements">
+      <app-stats-panel class="ps-painted panel-night" [title]="'Mouvements' | translate"
+        [bannerImage]="'/assets/site/header-movements.webp'" [style.--ps-head-position]="'center 62%'">
+        <div class="alliance-panel-body">
+          <app-table [sort]="''" [reverse]="false" [isInLoading]="isInMovementLoading" [maxPage]="maxPage!" [page]="page"
+          [search]="search" [headers]="[
+          ['playerName', 'Pseudonyme' | translate, '', true],
+          ['allianceName', 'Alliance' | translate, '/assets/min-alliance.png', true],
+          ['pp', 'Points de puissance' | translate, '/assets/pp1.png', true],
+          ['castleType', 'Type' | translate, '', true],
+          ['castleType', 'Action' | translate, '', true],
+          ['positionOld', 'Description' | translate, '', true],
+          ['date', 'Date' | translate, '', true],
+        ]" (navigateToPage)="navigateTo($event)" (previousPage)="previousPage()" (nextPage)="nextPage()">
+            @if (isInMovementLoading) {
+              @for (row of skeletonRows; track $index) {
+                <tr class="table-skeleton-row">
+                  @for (cell of skeletonCells; track $index) {
+                    <td><span class="gge-skeleton gge-skeleton--parchment table-skeleton-cell" aria-hidden="true"></span></td>
+                  }
+                </tr>
+              }
+            }
+            @if (movements.length === 0 && !isInMovementLoading) {
+              <tr>
+                <td colspan="10">
+                  <span class="text-muted">{{ 'Aucun mouvement trouvé' | translate }}</span>
+                </td>
+              </tr>
+            }
+            @for (movement of movements; track movement) {
+              <tr>
+                <td>{{ movement.rank }}</td>
+                <td>{{ movement.player }}</td>
+                <td>{{ movement.alliance ?? '-' }}</td>
+                <td>{{ (movement.might ? movement.might : 0) | formatNumber }}</td>
+                <td><img [src]="'/assets/castle' + movement.type + '.png'" [title]="getCastleType(movement.type) | translate"
+                [alt]="getCastleType(movement.type) | translate"></td>
+                <td [innerHTML]="getDescription(movement.type, movement.positionOld, movement.positionNew).image"></td>
+                <td>{{ getDescription(movement.type, movement.positionOld, movement.positionNew).keyword | translate }} {{
+                getDescription(movement.type, movement.positionOld, movement.positionNew).description }}</td>
+                <td>{{ movement.date | date: ('Date_1' | translate) }}</td>
+              </tr>
+            }
+          </app-table>
+        </div>
+      </app-stats-panel>
+    </div>
+  </div>
+}
+
+@if (!isInLoading) {
+  <div [ngClass]="selectedTab === 'members' ? 'd-block' : 'd-none'" class="alliances-stats-content pb-3 pt-3"
+    >
+    <div class="container">
+      <app-stats-panel class="ps-painted panel-night" [title]="'Membres' | translate" [subtitle]="allianceName"
+        [bannerImage]="'/assets/site/header-members.webp'" [style.--ps-head-position]="'center 60%'">
+        <div class="alliance-panel-body">
+          <div class="distance-panel">
+            <div class="distance-panel-header">
+              <img src="/assets/players.png" height="14" alt="">
+              <span>{{ 'Distance' | translate }}</span>
+            </div>
+            <div class="distance-panel-body">
+              <input
+                type="text"
+                class="distance-input"
+                [placeholder]="'Pseudonyme' | translate"
+                [(ngModel)]="playerNameForDistance" [attr.aria-label]="'Pseudonyme' | translate">
+              <div class="world-selector-group">
+                @for (world of availableWorlds; track world.id) {
+                  <button
+                    class="world-btn"
+                    [class.active]="selectedKingdomId === world.id"
+                    (click)="selectKingdom(world.id)"
+                    [title]="world.name | translate">
+                    <img width="24" height="24" class="me-2" alt="" [src]="'assets/dungeon' + world.id + '.png'">
+                    {{ world.name | translate }}
+                  </button>
+                }
+              </div>
+              <div class="distance-actions">
+                <button class="distance-action-btn primary"
+                  (click)="onAddDistanceColumn()"
+                  [disabled]="!playerNameForDistance.trim()"
+                  [title]="'Filtrer par distance depuis le château principal d\'un joueur' | translate">
+                  @if (!isDistanceIsInLoading) {
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>{{ 'Afficher la distance' | translate }}</span>
+                  } @else {
+                    <i class="fas fa-spinner fa-spin"></i>
+                  }
+                </button>
+                @if (playerNameForDistance.trim()) {
+                  <button class="distance-action-btn secondary"
+                    (click)="resetDistanceColumn()"
+                    [title]="'Réinitialiser' | translate">
+                    <i class="fas fa-times"></i>
+                  </button>
+                }
+                <button class="distance-action-btn export"
+                  (click)="exportData()"
+                  [title]="'Exporter les données' | translate">
+                  <lucide-icon [img]="Download"></lucide-icon>
+                </button>
+              </div>
+            </div>
+            <div class="distance-help-text" [innerHTML]="'Distance-text' | translate"></div>
+          </div>
+          <div class="players-container">
+            <app-table [sort]="sort" [reverse]="reverse" [isInLoading]="isInLoading" [maxPage]="maxPage!" [page]="page"
+              [search]="search" (sortOutput)="sortPlayers($event)" [headers]="membersTableHeader">
+              <app-player-table-content
+                [players]="players"
+                [distanceEnabled]="membersTableHeader.length > defaultMembersTableHeaderSize"
+                [playersTableHeader]="membersTableHeader"
+                (toggleFavorite)="toggleFavorite($event)"
+              ></app-player-table-content>
+            </app-table>
+          </div>
+        </div>
+      </app-stats-panel>
+    </div>
+  </div>
+  <div [ngClass]="selectedTab === 'description' ? 'd-block' : 'd-none'" class="alliances-stats-content pb-3 pt-3">
+    <div class="description-current">
+      <div class="description-current-label">{{ 'alliance_description' | translate }}</div>
+      <div class="alliance-description">
+        <span [innerHTML]="allianceData?.description | gameDescription"></span>
+      </div>
+    </div>
+
+    @if (descriptionHistory.length) {
+      <div class="description-history container-fluid mt-4">
+        <div class="description-history-title">
+          <lucide-icon [img]="History"></lucide-icon>
+          <span>{{ 'Historique des descriptions' | translate }}</span>
+          <span class="description-history-count">{{ descriptionHistory.length }}</span>
+        </div>
+        @for (change of descriptionHistory; track $index) {
+          <article class="description-change">
+            <header class="description-change-header">
+              <span class="description-change-date">
+                <i class="fas fa-clock"></i>
+                {{ change.createdAt | date: ('Date_5' | translate) }}
+              </span>
+              <span class="description-change-index">#{{ descriptionHistory.length - $index }}</span>
+            </header>
+            <div class="description-change-body">
+              <div class="description-version old">
+                <div class="description-version-label">{{ 'Ancienne description' | translate }}</div>
+                <div class="alliance-description fluid">
+                  <span [innerHTML]="change.previousHtml"></span>
+                </div>
+              </div>
+              <div class="description-change-arrow" aria-hidden="true">
+                <i class="fas fa-arrow-right"></i>
+              </div>
+              <div class="description-version new">
+                <div class="description-version-label">{{ 'Nouvelle description' | translate }}</div>
+                <div class="alliance-description fluid">
+                  <span [innerHTML]="change.currentHtml"></span>
+                </div>
+              </div>
+            </div>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="description-history-empty mt-4">{{ 'Aucune modification trouvée' | translate }}</div>
+    }
+  </div>
+  <div [ngClass]="selectedTab === 'movement' ? 'd-block' : 'd-none'" class="alliances-stats-content pb-3 pt-3">
+    <div class="timeline-section container pt-3">
+      <div class="timeline-header text-center mb-3">
+        <div class="row">
+          <div class="col text-start">
+            <button class="btn" (click)="previousMonth();" [title]="'Aller au mois précédent' | translate">
+              <i class="fas fa-chevron-left"></i>
+            </button>
+          </div>
+          <div class="col text-center">
+            <h3>{{ getMonthNameByDate(actualMonth) }}</h3>
+            <h5>{{ allianceName }}</h5>
+          </div>
+          <div class="col text-end">
+            <button class="btn" (click)="nextMonth()" [title]="'Aller au mois suivant' | translate">
+              <i class="fas fa-chevron-right"></i>
+            </button>
+          </div>
+          @if (nbMovementsByMonth[actualMonth]) {
+            <p class="text-muted">{{ 'Arrivées et départs' | translate }} ({{
+              nbMovementsByMonth[actualMonth].movements}},
+              {{ 'dont 0 arrivées et 0 départs' | translate: { arrivals: nbMovementsByMonth[actualMonth].joins, departures:
+              nbMovementsByMonth[actualMonth].leaves } }}
+            </p>
+          }
+        </div>
+        @if (!groupedUpdatedByMonths[actualMonth] || groupedUpdatedByMonths[actualMonth].length === 0) {
+          <div
+            class="text-center">
+            <em>{{ 'Aucun départ ou arrivée en 0' | translate: { time: (getMonthNameByDate(actualMonth) | lowercase) }
+            }}</em>
+          </div>
+        }
+        <div class="timeline-day-container">
+          @for (group of groupedUpdatedByMonths[actualMonth]; track group) {
+            <div class="timeline-day mb-4">
+              <div class="day-title text-light bg-custom p-2 rounded">{{ group.date | date:'fullDate':'':langageService.getCurrentLocale() | titlecase }} <small>({{
+              group.updates.length }})</small></div>
+              @for (update of group.updates; track update) {
+                <div class="timeline-event d-flex align-items-center my-2 p-2">
+                  <div class="event-icon rounded-circle text-center text-light me-2"
+                    [ngClass]="{ 'bg-success': update.action === 'joined', 'bg-danger': update.action === 'left' }">
+                    <i [ngClass]="update.action === 'joined' ? 'fas fa-door-open' : 'fas fa-door-closed'"></i>
+                  </div>
+                  <div class="event-details w-100 d-flex justify-content-between">
+                    <span>
+                      <strong class="text-dark">{{ update.player_name }}</strong>&nbsp;<small>({{ update.level }})</small>
+                    </span>
+                    <span [ngClass]="{ 'text-success': update.action === 'joined', 'text-danger': update.action === 'left' }">
+                      <i class="far fa-clock"></i>&nbsp;{{ update.created_at | date: 'shortTime' }} •
+                      @if (update.action === 'joined') {
+                        {{ 'A rejoint l\'alliance' | translate
+                        }}&nbsp;
+                      }
+                      @if (update.action === 'left') {
+                        {{ 'A quitté l\'alliance' | translate
+                        }}&nbsp;
+                      }
+                      <strong>{{ update.might_change }}</strong>
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+}
+
+@if (!isInLoading && isBrowser) {
+  <div [ngClass]="selectedTab === 'stats' ? 'd-block' : 'd-none'" class="alliances-stats-content">
+    @if (countQueryFinished === totalQuery && charts['might']) {
+      <div class="container-fluid pt-3 pb-3" style="margin-bottom: 70px;"
+        >
+        <div class="row">
+          @for (config of statsCardConfigs; track config) {
+            <div class="col-12 col-lg-6 mt-4">
+              @if (charts[config.chartKey]) {
+<app-player-stats-card [charts]="config.chartKey === 'might' ?
+            {
+              'Evolution': charts[config.chartKey]!,
+              'Données': null,
+            } : {
+              'Evolution': charts[config.chartKey]!,
+              'Participation': participationRateCharts[config.chartKey] || null,
+              'Données':  null,
+            }
+          " [subtitle]="eventTitles[config.chartKey]"
+                [ngClass]="fullScreenModalKey === config.chartKey ? 'fullscreen' : ''" [data]="config.data" [playerId]="allianceId"
+                [onePlayerOnly]="false"
+                [eventName]="config.eventTitleKey" [title]="config.title | translate" [dataName]="config.dataName"
+                [backgroundIconImage]="config.backgroundIconImage" [backgroundColour]="config.backgroundColour"
+                (changeTabOutput)="changeTabGraph(config.chartKey, $event)">
+                @if (!config.singleChart) {
+                  <div before class="alliance-stats-graph previous-graph">
+                    <span (click)="previousGraph(ApiPlayerStatsType[config.chartKey])"
+                      (keyup.enter)="previousGraph(ApiPlayerStatsType[config.chartKey])"
+                      (keypress)="$event.key === 'Enter' ? previousGraph(ApiPlayerStatsType[config.chartKey]) : null"
+                      [title]="'Graphique précédent' | translate">
+                      <i class="fas fa-chevron-left"></i>
+                    </span>
+                  </div>
+                }
+                @if (!config.singleChart) {
+                  <div after class="alliance-stats-graph next-graph">
+                    <span (click)="nextGraph(ApiPlayerStatsType[config.chartKey])"
+                      (keyup.enter)="nextGraph(ApiPlayerStatsType[config.chartKey])"
+                      (keypress)="$event.key === 'Enter' ? nextGraph(ApiPlayerStatsType[config.chartKey]) : null"
+                      [title]="'Graphique suivant' | translate">
+                      <i class="fas fa-chevron-right"></i>
+                    </span>
+                  </div>
+                }
+                <div class="flex-auto">
+                  <app-stats-card-content [statsType]="ApiPlayerStatsType[config.chartKey]" [keyStatsType]="config.chartKey"
+                    [cumulSeries]="cumulSeries" [seriesLabels]="seriesLabels" [fullScreenModalKey]="fullScreenModalKey"
+                    [currentTab]="chartsTabs[config.chartKey]" (nextGraphOutput)="nextGraph($event)"
+                    (previousGraphOutput)="previousGraph($event)" (toggleSeriesLabelsOutput)="toggleSeriesLabels($event)"
+                    (cumulSeriesLabelsOutput)="cumulSeriesLabels($event)" (openFullscreen)="openFullscreen($event)"
+                  (closeFullscreen)="closeFullscreen()"></app-stats-card-content>
+                </div>
+              </app-player-stats-card>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  } @else {
+    <div class="container pt-3">
+      <div class="progress">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" [ngClass]="{
+        'bg-success': countQueryFinished === totalQuery,
+        'bg-warning': countQueryFinished !== totalQuery
+        }" [style.width.%]="(countQueryFinished / totalQuery) * 100">
+          @if (countQueryFinished === totalQuery) {
+            <div class="text-center">
+              <em>{{ 'Affichage des statistiques' | translate }}</em>
+            </div>
+          }
+        </div>
+      </div>
+      @if (countQueryFinished !== totalQuery) {
+        <div class="text-center mt-2">
+          <i class="fas fa-spinner fa-spin"></i>
+          &nbsp;
+          <em>{{ message | translate }}</em>
+        </div>
+      }
+    </div>
+  }
+</div>
+}
+
+@if (!isInLoading) {
+  <div [ngClass]="selectedTab === 'health' ? 'd-block' : 'd-none'" class="alliances-stats-content">
+    @if (isPulseChartReady) {
+      <div class="container-fluid pt-3 pb-3" style="margin-bottom: 70px;">
+        <app-stats-panel class="ps-painted panel-night" [title]="'Rythme de l\'alliance' | translate"
+          [subtitle]="allianceName" [bannerImage]="'/assets/site/header-pulse.webp'"
+          [style.--ps-head-position]="'center 55%'">
+          <div class="alliance-panel-body">
+            <div class="row">
+              @if (topMightGain24h && topMightGain24h.length > 0) {
+                <div class="col-6 mt-4">
+                  <h2 class="text-center subtitle">{{ 'Progressions de puissance depuis 24 heures' | translate }}</h2>
+            <ng-container *ngTemplateOutlet="pulseList; context: { $implicit: topMightGain24h }"></ng-container>
+                </div>
+              }
+              @if (topMightGain7d && topMightGain7d.length > 0) {
+                <div class="col-6 mt-4">
+                  <h2 class="text-center subtitle">{{ 'Progressions de puissance depuis 7 jours' | translate }}</h2>
+            <ng-container *ngTemplateOutlet="pulseList; context: { $implicit: topMightGain7d }"></ng-container>
+                </div>
+              }
+              @if (topMightLoss24h && topMightLoss24h.length > 0) {
+                <div class="col-6 mt-4">
+                  <h2 class="text-center subtitle">{{ 'Baisses de puissance depuis 24 heures' | translate }}</h2>
+            <ng-container *ngTemplateOutlet="pulseList; context: { $implicit: topMightLoss24h }"></ng-container>
+                </div>
+              }
+              @if (topMightLoss7d && topMightLoss7d.length > 0) {
+                <div class="col-6 mt-4">
+                  <h2 class="text-center subtitle">{{ 'Baisses de puissance depuis 7 jours' | translate }}</h2>
+            <ng-container *ngTemplateOutlet="pulseList; context: { $implicit: topMightLoss7d }"></ng-container>
+                </div>
+              }
+            </div>
+          </div>
+        </app-stats-panel>
+        <div class="row mt-3">
+          <div class="col-12">
+            @if (mightPerHourChart) {
+<app-player-stats-card [charts]="{
+                'Graphique': mightPerHourChart,
+                'Données': null
+              }
+            " [subtitle]="('Progression de la puissance totale de l\'alliance par heure' | translate) + ' (' + this.allianceName + ')'" [data]="mightPerHourTable"
+              [playerId]="undefined" [eventName]="''" [title]="'Puissance par heure' | translate"
+              [dataName]="'Puissance' | translate" [backgroundIconImage]="'/assets/banner-pp.png'"
+              [backgroundColour]="'rgb(255 230 35)'">
+              <hr>
+                <div class="chart-legend">
+                  <div class="legend-item">
+                    <span class="legend-color morning"></span>
+                    <span>{{ 'Matinée (06h - 12h)' | translate }}</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color afternoon"></span>
+                    <span>{{ 'Après-midi (12h - 18h)' | translate }}</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color evening"></span>
+                    <span>{{ 'Soirée (18h - 00h)' | translate }}</span>
+                  </div>
+                  <div class="legend-item">
+                    <span class="legend-color night"></span>
+                    <span>{{ 'Nuit (00h - 06h)' | translate }}</span>
+                  </div>
+                </div>
+              </app-player-stats-card>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-6">
+            @if (dailyAvgMightChangeChart) {
+<app-player-stats-card [charts]="{
+            'Graphique': dailyAvgMightChangeChart
+          }" [subtitle]="('Moyenne des variations de puissance par jour' | translate) + ' (' + this.allianceName + ')'" [data]="[]"
+                [playerId]="allianceId" [eventName]="''" [title]="'Moyenne des variations' | translate"
+                [dataName]="'Puissance' | translate" [backgroundIconImage]="'/assets/banner-pp.png'"
+                [backgroundColour]="'rgb(255 230 35)'">
+                <div after class="info-icon">
+                  <i class="fas fa-info-circle" [title]="'Aide' | translate" data-bs-toggle="modal" data-bs-target="#infoDesc1Modal" (click)="openModal1()" (keydown.enter)="openModal1()"></i>
+                </div>
+              </app-player-stats-card>
+            }
+          </div>
+          <div class="col-6">
+            @if (mightIntraVariationChart) {
+<app-player-stats-card [charts]="{
+            'Graphique': mightIntraVariationChart
+          }" [subtitle]="('Variation brute (amplitude) de la puissance par jour' | translate) + ' (' + this.allianceName + ')'" [data]="[]"
+                [playerId]="allianceId" [eventName]="''" [title]="'Activité journalière' | translate"
+                [dataName]="'Puissance' | translate" [backgroundIconImage]="'/assets/banner-pp.png'"
+                [backgroundColour]="'rgb(255 230 35)'">
+                <div after class="info-icon">
+                  <i class="fas fa-info-circle" [title]="'Aide' | translate" data-bs-toggle="modal" data-bs-target="#infoDesc2Modal" (click)="openModal2()" (keydown.enter)="openModal2()"></i>
+                </div>
+              </app-player-stats-card>
+            }
+          </div>
+        </div>
+      </div>
+    } @else {
+      <output class="container-fluid pt-3 pb-3" [attr.aria-label]="'Chargement' | translate">
+        <div class="row" aria-hidden="true">
+          @for (placeholder of skeletonPulseTables; track $index) {
+            <div class="col-12 col-lg-6 mt-4">
+              <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-subtitle"></span>
+              <div class="pulse-skeleton-table">
+                @for (row of skeletonRows; track $index) {
+                  <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-line"></span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+        <div class="row mt-3" aria-hidden="true">
+          <div class="col-12">
+            <span class="gge-skeleton gge-skeleton--parchment alliance-skeleton-chart"></span>
+          </div>
+        </div>
+      </output>
+    }
+  </div>
+}
+
+
+
+
+
+
+
+<div class="modal fade" id="infoDesc1Modal" tabindex="-1" aria-labelledby="infoDesc1ModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="infoDesc1ModalLabel">{{ 'Explication' | translate }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" [attr.aria-label]="'Fermer' | translate"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <div class="container">
+            <div class="explanation">
+              <p>{{ 'Moyenne des variations - Explication' | translate }}</p>
+              <hr>
+                <div class="katex-target"></div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ 'Fermer' | translate }}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+  <div class="modal fade" id="infoDesc2Modal" tabindex="-1" aria-labelledby="infoDesc2ModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="infoDesc2ModalLabel">{{ 'Explication' | translate }}</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row">
+            <div class="container">
+              <div class="explanation">
+                <p>{{ 'Activité journalière - Explication' | translate }}</p>
+                <hr>
+                  <div class="katex-target-var"></div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ 'Fermer' | translate }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<ng-template #pulseList let-players>
+  <ol class="pulse-list">
+    @for (player of players; track player.playerName; let i = $index) {
+      <li class="pulse-row">
+        <span class="pulse-rank">{{ i + 1 }}</span>
+        <span class="pulse-name">{{ player.playerName }}</span>
+        <span class="pulse-might" [title]="player.current">
+          <img src="/assets/pp1.png" alt="" width="16" height="16">{{ player.current | formatNumber }}
+        </span>
+        <span class="pulse-diff" [class.is-up]="player.diff > 0" [class.is-down]="player.diff < 0">
+          {{ player.diff > 0 ? '+' : '' }}{{ player.diff | formatNumber }}
+        </span>
+      </li>
+    }
+  </ol>
+</ng-template>

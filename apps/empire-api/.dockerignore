@@ -1,0 +1,10 @@
+node_modules
+.env
+.env.example
+.git
+.github
+.gitignore
+.dockerignore
+Dockerfile
+fly.toml
+README.md

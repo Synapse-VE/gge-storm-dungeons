@@ -1,0 +1,2777 @@
+import { DatePipe, LowerCasePipe, NgClass, NgTemplateOutlet, TitleCasePipe } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  ElementRef,
+  inject,
+  OnDestroy,
+  OnInit,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { Title } from '@angular/platform-browser';
+import { LayeredSceneComponent } from '@ggetracker-components/layered-scene/layered-scene.component';
+import { DivisionBadgeComponent } from '@ggetracker-components/division-badge/division-badge.component';
+import { ShareLinkComponent } from '@ggetracker-components/share-link/share-link.component';
+import { GenericComponent } from '@ggetracker-components/generic/generic.component';
+import { TableComponent } from '@ggetracker-components/table/table.component';
+import {
+  ApiAllianceDescriptionHistory,
+  ApiAllianceTournamentStandingsResponse,
+  ApiAlliancePlayersSearchResponse,
+  ApiGenericData,
+  ApiMovementsResponse,
+  ApiPlayerSearchResponse,
+  ApiPlayerStatsAlliance,
+  ApiPlayerStatsForAlliance,
+  ApiPlayerStatsType,
+  ApiServerStats,
+  ApiUpdateAlliancePlayers,
+  ChartOptions,
+  ChartTypes,
+  ErrorType,
+  EventGenericVariation,
+  FavoritePlayer,
+  GroupedUpdatesByDate,
+  ISelectedTab,
+  Movement,
+  Player,
+  SearchType,
+  ApiTournamentStanding,
+} from '@ggetracker-interfaces/empire-ranking';
+import { FormatNumberPipe } from '@ggetracker-pipes/format-number.pipe';
+import { formatThousands } from '@ggetracker-services/text-format.utilities';
+import { LanguageService } from '@ggetracker-services/language.service';
+import { FollowService } from '@ggetracker-services/follow.service';
+import {
+  DEFAULT_LOOT_RESET,
+  LootReset,
+  lootResetOf,
+  lootWeekEnd,
+  lootWeekStart,
+} from '@ggetracker-services/loot-reset.utilities';
+import { LocalStorageService } from '@ggetracker-services/local-storage.service';
+import { WindowService } from '@ggetracker-services/window.service';
+import { RouterLink } from '@angular/router';
+import { TranslateModule } from '@ngx-translate/core';
+import { format } from 'date-fns';
+import {
+  Activity,
+  BriefcaseConveyorBelt,
+  ChartSpline,
+  Download,
+  Earth,
+  Flag,
+  History,
+  LucideAngularModule,
+  LucideIconData,
+  ScrollText,
+  Trophy,
+  Users,
+} from 'lucide-angular';
+import { ApexAxisChartSeries, XAxisAnnotations } from 'ng-apexcharts';
+import { PlayerStatsCardComponent } from '../player-stats/player-stats-card/player-stats-card.component';
+import { StatsPanelComponent } from '../player-stats/stats-panel/stats-panel.component';
+import { StatsCardContentComponent } from './stats-card-content/stats-card-content.component';
+import { PlayerTableContentComponent } from '@ggetracker-pages/players/player-table-content/player-table-content.component';
+import { DecodeHtmlPipe } from '../../../pipes/decode-html.pipe';
+import { GameDescriptionPipe } from '../../../pipes/game-description.pipe';
+import { first, firstValueFrom } from 'rxjs';
+
+enum ChartTypeHeights {
+  DEFAULT = 450,
+  LARGE = 650,
+}
+
+type StatTrend = 'up' | 'down' | null;
+
+interface StatLedgerDetail {
+  value: string;
+  prefixKey?: string;
+  suffixKey?: string;
+  trend?: StatTrend;
+}
+
+interface StatLedgerRow {
+  labelKey: string;
+  value: string;
+  detail?: StatLedgerDetail;
+}
+
+interface StatLedger {
+  titleKey: string;
+  icon: string;
+  rows: StatLedgerRow[];
+}
+
+interface TournamentBadge {
+  labelKey: string;
+  route: string;
+  divisionNameKey: string;
+  standing: ApiTournamentStanding;
+  queryParams: Record<string, string | number>;
+}
+
+interface DescriptionSegment {
+  text: string;
+  changed: boolean;
+}
+
+interface DescriptionChange {
+  createdAt: string;
+  previousHtml: string;
+  currentHtml: string;
+}
+
+const DESCRIPTION_DIFF_MAX_TOKENS = 600;
+const HERO_BACKDROP_ROOT = '/assets/scenes/council/';
+const HERO_GRACE_MS = 1200;
+const SKELETON_LEDGERS = [3, 3, 2, 2, 3].map((rows) => Array.from({ length: rows }));
+
+interface CardConfig {
+  chartKey: keyof typeof ApiPlayerStatsType;
+  title: string;
+  dataName: string;
+  data: EventGenericVariation[];
+  backgroundColour: string;
+  singleChart?: boolean;
+  backgroundIconImage: string;
+  eventTitleKey: keyof typeof ApiPlayerStatsType;
+}
+const MS_PER_HOUR = 3_600_000;
+const FIRST_LOOT_EVENT_TIMESTAMP = 1_737_349_200_000;
+
+interface LootPlayerSeries {
+  playerName: string;
+  segments: [number, number][];
+}
+
+interface LootSegment {
+  name: string;
+  data: [number, number | null][];
+  lastValue: number;
+  hidden?: boolean;
+}
+
+interface EventPlayerSeries {
+  playerName: string;
+  segments: { name: string; data: [number, number][]; lastValue: number };
+}
+
+interface EventSegment {
+  name: string;
+  data: [number, number][];
+  lastValue: number;
+  playerName?: string;
+}
+
+interface EventSerie {
+  name: string;
+  data: [number, number][];
+  hidden: boolean;
+  custom?: Record<string, unknown>;
+}
+
+const WHITESPACE = /\s/;
+
+@Component({
+  selector: 'app-alliance-stats',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    NgClass,
+    NgTemplateOutlet,
+    DatePipe,
+    TitleCasePipe,
+    TranslateModule,
+    PlayerStatsCardComponent,
+    StatsPanelComponent,
+    LowerCasePipe,
+    FormsModule,
+    LucideAngularModule,
+    TableComponent,
+    PlayerTableContentComponent,
+    FormatNumberPipe,
+    StatsCardContentComponent,
+    TranslateModule,
+    GameDescriptionPipe,
+    RouterLink,
+    DivisionBadgeComponent,
+    ShareLinkComponent,
+    LayeredSceneComponent,
+  ],
+  standalone: true,
+  templateUrl: './alliance-stats.component.html',
+  styleUrl: './alliance-stats.component.css',
+})
+export class AllianceStatsComponent extends GenericComponent implements OnInit, OnDestroy {
+  public players: Player[] = [];
+  public isDistanceIsInLoading = false;
+  public page = 1;
+  public maxPage?: number;
+  public readonly Download = Download;
+  public pageSize = 15;
+  public responseTime = 0;
+  public playerCount = 0;
+  public movements: Movement[] = [];
+  public toggleCharts: Record<keyof typeof ApiPlayerStatsType, boolean> = {
+    might: false,
+    loot: false,
+    berimond_invasion: false,
+    berimond_kingdom: false,
+    bloodcrow: false,
+    nomad: false,
+    samurai: false,
+    war_realms: false,
+  };
+  public movementsResponseTime = 0;
+  public search = '';
+  public searchType: SearchType = 'player';
+  public reverse = true;
+  public sort = 'might_current';
+  public favoriePlayers: FavoritePlayer[] = [];
+  public readonly Trophy = Trophy;
+  public readonly Earth = Earth;
+  public readonly History = History;
+  /**
+   * Array of loading messages for the component (these are i18n keys).
+   */
+  public loadingMessages: string[] = [
+    'Chargement_1',
+    'Chargement_2',
+    'Chargement_3',
+    'Chargement_4',
+    'Chargement_5',
+    'Chargement_6',
+    'Chargement_7',
+    'Chargement_8',
+    'Chargement_9',
+  ];
+  public currentMessageIndex = 0;
+  public message = this.loadingMessages[this.currentMessageIndex];
+  public intervalId?: unknown;
+  public fullScreenModalKey: keyof typeof ApiPlayerStatsType | null = null;
+  public seriesLabels: Record<keyof typeof ApiPlayerStatsType, boolean> = {
+    might: true,
+    berimond_kingdom: true,
+    berimond_invasion: true,
+    war_realms: true,
+    bloodcrow: true,
+    nomad: true,
+    samurai: true,
+    loot: true,
+  };
+  public cumulSeries: Record<keyof typeof ApiPlayerStatsType, boolean> = {
+    might: false,
+    berimond_kingdom: false,
+    berimond_invasion: false,
+    war_realms: false,
+    bloodcrow: false,
+    nomad: false,
+    samurai: false,
+    loot: false,
+  };
+  public eventTitles: Record<keyof typeof ApiPlayerStatsType, string> = {
+    might: '',
+    loot: '',
+    berimond_invasion: '',
+    berimond_kingdom: '',
+    bloodcrow: '',
+    nomad: '',
+    samurai: '',
+    war_realms: '',
+  };
+  public charts: Record<keyof typeof ApiPlayerStatsType, ChartOptions | undefined> = {
+    might: undefined,
+    loot: undefined,
+    berimond_invasion: undefined,
+    berimond_kingdom: undefined,
+    bloodcrow: undefined,
+    nomad: undefined,
+    samurai: undefined,
+    war_realms: undefined,
+  };
+  public participationRateCharts: Record<keyof typeof ApiPlayerStatsType, ChartOptions | undefined> = {
+    might: undefined,
+    loot: undefined,
+    berimond_invasion: undefined,
+    berimond_kingdom: undefined,
+    bloodcrow: undefined,
+    nomad: undefined,
+    samurai: undefined,
+    war_realms: undefined,
+  };
+  public radarCharts: Record<keyof typeof ApiPlayerStatsType, ChartOptions | undefined> = {
+    might: undefined,
+    loot: undefined,
+    berimond_invasion: undefined,
+    berimond_kingdom: undefined,
+    bloodcrow: undefined,
+    nomad: undefined,
+    samurai: undefined,
+    war_realms: undefined,
+  };
+  public groupedUpdatedByMonths: Record<string, GroupedUpdatesByDate[]> = {};
+  public nbMovementsByMonth: Record<string, { movements: number; leaves: number; joins: number }> = {};
+  public progressByPlayer: {
+    event: ApiPlayerStatsType;
+    data: { playerName: string; progress: number }[];
+  }[] = [];
+  public allianceId = 0;
+  public progressCalcFinished = false;
+  public progressCalcInProgress = false;
+  public selectedTab: ISelectedTab = 'members';
+  public readonly tabs: { key: ISelectedTab; label: string; icon: LucideIconData }[] = [
+    { key: 'members', label: 'Membres', icon: Users },
+    { key: 'description', label: 'Description', icon: ScrollText },
+    { key: 'movement', label: 'Arrivées et départs', icon: BriefcaseConveyorBelt },
+    { key: 'stats', label: 'Statistiques des joueurs', icon: ChartSpline },
+    { key: 'health', label: "Rythme de l'alliance", icon: Activity },
+    { key: 'movements', label: 'Mouvements', icon: Flag },
+  ];
+  public actualMonth = new Date().toISOString().split('T')[0].slice(0, 7);
+  public groupedUpdates: GroupedUpdatesByDate[] = [];
+  public playerNameForDistance = '';
+  public selectedKingdomId = 0;
+  public readonly availableWorlds = [
+    { id: 0, name: 'Le Grand Empire' },
+    { id: 2, name: 'Le Glacier éternel' },
+    { id: 1, name: 'Les Sables brûlants' },
+    { id: 3, name: 'Les Pics du feu' },
+    { id: 4, name: 'Les Îles orageuses' },
+  ];
+  public allianceName = '';
+  public allianceData?: ApiAlliancePlayersSearchResponse;
+  public descriptionHistory: DescriptionChange[] = [];
+  public updatesPlayers: ApiUpdateAlliancePlayers[] = [];
+  public countQueryFinished = 0;
+  public totalQuery = 0;
+  public ledgers: StatLedger[] = [];
+  public isInMovementLoading = false;
+  public readonly skeletonLedgers = SKELETON_LEDGERS;
+  public readonly skeletonRows = Array.from({ length: 8 });
+  public readonly skeletonCells = Array.from({ length: 8 });
+  public readonly skeletonPulseTables = Array.from({ length: 4 });
+  public lastUpdate = '';
+  public graphPages: Record<ApiPlayerStatsType, number> = {
+    player_might_history: -1,
+    player_event_berimond_kingdom_history: -1,
+    player_event_war_realms_history: -1,
+    player_event_bloodcrow_history: -1,
+    player_event_nomad_history: -1,
+    player_event_samurai_history: -1,
+    player_loot_history: 0,
+    player_event_berimond_invasion_history: -1,
+  };
+  public readonly statsCardConfigs: CardConfig[] = [
+    {
+      chartKey: 'might',
+      title: 'Points de puissance',
+      dataName: 'Point de puissance',
+      data: [],
+      singleChart: true,
+      backgroundColour: 'rgb(255 230 35)',
+      backgroundIconImage: '/assets/banner-pp.png',
+      eventTitleKey: 'might',
+    },
+    {
+      chartKey: 'loot',
+      title: 'Points de pillage',
+      dataName: 'Point de pillage',
+      data: [],
+      backgroundColour: '#e7a220',
+      backgroundIconImage: '/assets/banner-loot.png',
+      eventTitleKey: 'loot',
+    },
+    {
+      chartKey: 'war_realms',
+      title: 'Guerre des royaumes',
+      dataName: 'Point de guerre des royaumes',
+      data: [],
+      backgroundColour: 'rgb(216 182 255)',
+      backgroundIconImage: '/assets/banner-realm.png',
+      eventTitleKey: 'war_realms',
+    },
+    {
+      chartKey: 'bloodcrow',
+      title: 'Corbeaux de sang',
+      dataName: 'Point de corbeaux de sang',
+      data: [],
+      backgroundColour: 'rgb(216 182 255)',
+      backgroundIconImage: '/assets/banner-bloodcrow.png',
+      eventTitleKey: 'bloodcrow',
+    },
+    {
+      chartKey: 'berimond_kingdom',
+      title: 'Bataille de Berimond',
+      dataName: 'Point de Berimond',
+      data: [],
+      backgroundColour: '#00aaff',
+      backgroundIconImage: '/assets/banner-berimond.png',
+      eventTitleKey: 'berimond_kingdom',
+    },
+    {
+      chartKey: 'nomad',
+      title: 'Nomades',
+      dataName: 'Point de nomades',
+      data: [],
+      backgroundColour: 'rgb(255 130 54)',
+      backgroundIconImage: '/assets/banner-nomad.png',
+      eventTitleKey: 'nomad',
+    },
+    {
+      chartKey: 'samurai',
+      title: 'Samouraïs',
+      dataName: 'Point de samouraïs',
+      data: [],
+      backgroundColour: '#58771db5',
+      backgroundIconImage: '/assets/banner-samurai.png',
+      eventTitleKey: 'samurai',
+    },
+  ];
+  public eventDataSegments: Record<string, ApiGenericData[][]> = {};
+  public readonly monthNames = [
+    'Janvier',
+    'Février',
+    'Mars',
+    'Avril',
+    'Mai',
+    'Juin',
+    'Juillet',
+    'Août',
+    'Septembre',
+    'Octobre',
+    'Novembre',
+    'Décembre',
+  ];
+  public ApiPlayerStatsType: typeof ApiPlayerStatsType = ApiPlayerStatsType;
+  public chartsTabs: Record<keyof typeof ApiPlayerStatsType, ChartTypes | null> = {
+    might: null,
+    loot: null,
+    berimond_kingdom: null,
+    war_realms: null,
+    bloodcrow: null,
+    nomad: null,
+    samurai: null,
+    berimond_invasion: null,
+  };
+  public mightPerHourChart: ChartOptions | undefined;
+  public dailyAvgMightChangeChart: ChartOptions | undefined;
+  public mightIntraVariationChart: ChartOptions | undefined;
+  public isPulseChartReady = false;
+  public topMightGain24h: {
+    current: number;
+    diff: number;
+    player_id: string;
+    playerName: string;
+  }[] = [];
+  public topMightLoss24h: {
+    current: number;
+    diff: number;
+    player_id: string;
+    playerName: string;
+  }[] = [];
+  public topMightGain7d: {
+    current: number;
+    diff: number;
+    player_id: string;
+    playerName: string;
+  }[] = [];
+  public topMightLoss7d: {
+    current: number;
+    diff: number;
+    player_id: string;
+    playerName: string;
+  }[] = [];
+  public mightPerHourTable: {
+    date: string;
+    point: number;
+    variation: number;
+  }[] = [];
+  public el = inject(ElementRef);
+  public membersTableHeader: [string, string, (string | undefined)?, (boolean | undefined)?][] = [
+    ['player_name', 'Pseudonyme'],
+    ['level', 'Niveau', '/assets/lvl.png'],
+    ['might_current', 'Points de puissance', '/assets/pp1.png'],
+    ['loot_current', 'Points de pillage hebdomadaire', '/assets/loot.png'],
+    ['current_fame', 'Points de gloire', '/assets/glory.png'],
+    ['honor', 'Honneur', '/assets/honor.png'],
+    ['alliance_rank', "Rang dans l'alliance", '/assets/min-alliance.png'],
+    ['', '', undefined, true],
+  ];
+  public defaultMembersTableHeaderSize = this.membersTableHeader.length;
+  public tournamentBadges: TournamentBadge[] = [];
+  private readonly windowService = inject(WindowService);
+  private readonly languageService = inject(LanguageService);
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly localStorage = inject(LocalStorageService);
+  private readonly followService = inject(FollowService);
+  private readonly playersColors: Record<string, string> = {};
+  private statsFinished = false;
+  private statsInProgress = false;
+  private data: ApiPlayerStatsForAlliance | null = null;
+  private readonly titleService = inject(Title);
+  private lootReset: LootReset = DEFAULT_LOOT_RESET;
+  private isDestroyed = false;
+
+  public ngOnInit(): void {
+    this.init();
+  }
+
+  public ngOnDestroy(): void {
+    this.isDestroyed = true;
+    clearInterval(this.intervalId as number);
+  }
+
+  public async navigateTo(page: number): Promise<void> {
+    if (this.isInMovementLoading) return;
+    this.isInMovementLoading = true;
+    this.page = page;
+    const movements = await this.getGenericData();
+    this.responseTime = movements.response;
+    this.movements = this.mapMovementsFromApi(
+      movements.data,
+      (index: number) => (this.page - 1) * this.pageSize + index + 1,
+    );
+    this.isInMovementLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public changeTabGraph(chartKey: keyof typeof ApiPlayerStatsType, tab: ChartTypes): void {
+    this.chartsTabs[chartKey] = tab;
+  }
+
+  public formatAvg(value: number, toFixed = 3): string {
+    return formatThousands(value.toFixed(toFixed));
+  }
+
+  public customFormatter(value: number, precision: number): string {
+    return formatThousands(value.toFixed(precision));
+  }
+
+  public openFullscreen(chartKey: keyof typeof ApiPlayerStatsType): void {
+    let chart;
+    const tab = this.chartsTabs[chartKey];
+    if (tab === ChartTypes.PARTICIPATION_RATE) {
+      chart = this.participationRateCharts[chartKey];
+    } else if (tab === ChartTypes.RADAR) {
+      chart = this.radarCharts[chartKey];
+    } else {
+      chart = this.charts[chartKey];
+    }
+    if (!chart) return;
+    const copyChart = { ...chart };
+    const win = this.windowService.getWindow();
+    if (!win?.innerWidth || !win.innerHeight) return;
+    chart.chart.height = win.innerHeight - 250;
+    chart.chart.width = win.innerWidth - 100;
+    if (tab === ChartTypes.PARTICIPATION_RATE) {
+      this.participationRateCharts[chartKey] = chart;
+    } else if (tab === ChartTypes.RADAR) {
+      this.radarCharts[chartKey] = chart;
+    } else {
+      this.charts[chartKey] = chart;
+    }
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      if (tab === ChartTypes.PARTICIPATION_RATE) {
+        delete this.participationRateCharts[chartKey];
+      } else if (tab === ChartTypes.RADAR) {
+        delete this.radarCharts[chartKey];
+      } else {
+        delete this.charts[chartKey];
+      }
+      this.fullScreenModalKey = chartKey;
+      this.cdr.detectChanges();
+      // Refresh the chart
+      setTimeout(() => {
+        if (tab === ChartTypes.PARTICIPATION_RATE) {
+          this.participationRateCharts[chartKey] = copyChart;
+        } else if (tab === ChartTypes.RADAR) {
+          this.radarCharts[chartKey] = copyChart;
+        } else {
+          this.charts[chartKey] = copyChart;
+        }
+        this.cdr.detectChanges();
+      }, 0);
+    });
+  }
+
+  public closeFullscreen(): void {
+    const key = this.fullScreenModalKey;
+    if (!key) return;
+    const tab = this.chartsTabs[key];
+    const store = this.chartStoreFor(tab);
+    const chart = store[key];
+    if (!chart) return;
+    this.resetChartSize(this.participationRateCharts[key], ChartTypeHeights.DEFAULT);
+    this.resetChartSize(this.charts[key], ChartTypeHeights.DEFAULT);
+    this.resetChartSize(this.radarCharts[key], ChartTypeHeights.LARGE);
+    this.resetChartSize(chart, tab === ChartTypes.RADAR ? ChartTypeHeights.LARGE : ChartTypeHeights.DEFAULT);
+    const copyChart = { ...chart };
+    store[key] = chart;
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      // Update the chart reference
+      delete store[key];
+      this.cdr.detectChanges();
+      setTimeout(() => {
+        store[key] = copyChart;
+        this.fullScreenModalKey = null;
+        this.cdr.detectChanges();
+      }, 0);
+    });
+  }
+
+  public async nextPage(): Promise<void> {
+    if (this.isInMovementLoading) return;
+    this.isInMovementLoading = true;
+    this.page++;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const movements = data.data;
+    this.movements = this.mapMovementsFromApi(
+      movements,
+      (index: number) => (this.page - 1) * this.pageSize + index + 1,
+    );
+    this.isInMovementLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public async previousPage(): Promise<void> {
+    if (this.isInMovementLoading) return;
+    this.isInMovementLoading = true;
+    this.page--;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const movements = data.data;
+    this.movements = this.mapMovementsFromApi(
+      movements,
+      (index: number) => (this.page - 1) * this.pageSize + index + 1,
+    );
+    this.isInMovementLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public previousGraph(graphKey: ApiPlayerStatsType): void {
+    if (!this.data) return;
+    const serieChoosen = this.graphPages[graphKey];
+    this.graphPages[graphKey] = serieChoosen - 1;
+    switch (graphKey) {
+      case ApiPlayerStatsType.berimond_kingdom: {
+        this.seriesLabels.berimond_kingdom = true;
+        this.initBerimondKingdomData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.war_realms: {
+        this.seriesLabels.war_realms = true;
+        this.initWarRealmsData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.bloodcrow: {
+        this.seriesLabels.bloodcrow = true;
+        this.initBloodcrowData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.nomad: {
+        this.seriesLabels.nomad = true;
+        this.initNomadData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.samurai: {
+        this.seriesLabels.samurai = true;
+        this.initSamuraiData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.loot: {
+        this.graphPages[graphKey] = serieChoosen + 1;
+        this.seriesLabels.loot = true;
+        this.initLootHistoryData(this.data);
+        break;
+      }
+    }
+    this.cdr.detectChanges();
+  }
+
+  public nextGraph(graphKey: ApiPlayerStatsType): void {
+    if (!this.data) return;
+    const serieChoosen = this.graphPages[graphKey];
+    if (
+      (serieChoosen >= -1 && graphKey !== ApiPlayerStatsType.loot) ||
+      (graphKey === ApiPlayerStatsType.loot && serieChoosen <= 0)
+    )
+      return;
+    this.graphPages[graphKey] = serieChoosen + 1;
+    switch (graphKey) {
+      case ApiPlayerStatsType.berimond_kingdom: {
+        this.seriesLabels.berimond_kingdom = true;
+        this.initBerimondKingdomData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.war_realms: {
+        this.seriesLabels.war_realms = true;
+        this.initWarRealmsData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.bloodcrow: {
+        this.seriesLabels.bloodcrow = true;
+        this.initBloodcrowData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.nomad: {
+        this.seriesLabels.nomad = true;
+        this.initNomadData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.samurai: {
+        this.seriesLabels.samurai = true;
+        this.initSamuraiData(this.data);
+        break;
+      }
+      case ApiPlayerStatsType.loot: {
+        this.graphPages[graphKey] = serieChoosen - 1;
+        this.seriesLabels.loot = true;
+        this.initLootHistoryData(this.data);
+        break;
+      }
+    }
+    this.cdr.detectChanges();
+  }
+
+  public previousMonth(): void {
+    const [year, month] = this.actualMonth.split('-');
+    const previousMonth = Number(month) - 1;
+    if (previousMonth < 1) {
+      this.actualMonth = `${Number(year) - 1}-12`;
+    } else {
+      this.actualMonth = `${year}-${previousMonth.toString().padStart(2, '0')}`;
+    }
+    this.cdr.detectChanges();
+  }
+
+  public nextMonth(): void {
+    const [year, month] = this.actualMonth.split('-');
+    const nextMonth = Number(month) + 1;
+    if (new Date(Number(year), nextMonth - 1) > new Date()) {
+      return;
+    } else if (nextMonth > 12) {
+      this.actualMonth = `${Number(year) + 1}-01`;
+    } else {
+      this.actualMonth = `${year}-${nextMonth.toString().padStart(2, '0')}`;
+    }
+    this.cdr.detectChanges();
+  }
+
+  public selectKingdom(id: number): void {
+    this.selectedKingdomId = id;
+    this.cdr.detectChanges();
+  }
+
+  public async resetDistanceColumn(): Promise<void> {
+    this.playerNameForDistance = '';
+    this.selectedKingdomId = 0;
+    const serverName = this.apiRestService.serverService.currentServer?.name;
+    this.localStorage.removeItem('allianceDistancePlayerName_' + serverName);
+    this.cdr.detectChanges();
+    this.removeHeaderTableBlock();
+  }
+
+  public async onAddDistanceColumn(): Promise<void> {
+    if (!this.playerNameForDistance?.trim()) return;
+    this.isDistanceIsInLoading = true;
+    const serverName = this.apiRestService.serverService.currentServer?.name;
+    this.localStorage.setItem('allianceDistancePlayerName_' + serverName, this.playerNameForDistance);
+    const data = await this.getAllianceMembers();
+    this.isDistanceIsInLoading = false;
+    if (!data) return;
+    this.players = this.mapPlayersFromApi(data.players);
+    this.addHeaderTableBlock();
+  }
+
+  public cumulSeriesLabels(chartName: keyof typeof ApiPlayerStatsType): void {
+    const chart = this.charts[chartName];
+    if (!chart) return;
+    if (!this.data) return;
+    const apiPlayerStatsType = ApiPlayerStatsType[chartName];
+    if (apiPlayerStatsType === ApiPlayerStatsType.loot) {
+      this.initLootHistoryData(this.data);
+    } else {
+      this.initGenericEventData(chartName, apiPlayerStatsType, this.data, this.graphPages[apiPlayerStatsType]);
+    }
+    this.cdr.detectChanges();
+  }
+
+  public toggleSeriesLabels(chartName: keyof typeof ApiPlayerStatsType): void {
+    const chart = this.charts[chartName];
+    if (!chart) return;
+    const currentToggleType = this.toggleCharts[chartName];
+    chart.series.forEach((serie) => (serie['hidden'] = !currentToggleType));
+    this.toggleCharts[chartName] = !currentToggleType;
+    this.initChartOption(chartName, chart.series, chart.colors);
+    this.cdr.detectChanges();
+  }
+
+  public sortPlayers(sort: string): void {
+    if (this.sort === sort) {
+      this.reverse = !this.reverse;
+    } else {
+      this.reverse = false;
+      this.sort = sort;
+    }
+    // Sort players based on the selected property
+    let playerProperty: keyof Player;
+    if (sort === 'level') {
+      // If the property is 'level', sort by level and legendary level
+      this.players = [...this.players].sort((a, b) => {
+        const aLevelValue = (a.level || 0) + (a.legendaryLevel || 0);
+        const bLevelValue = (b.level || 0) + (b.legendaryLevel || 0);
+        if (this.reverse) return bLevelValue - aLevelValue;
+        return aLevelValue - bLevelValue;
+      });
+    } else {
+      playerProperty = sort.replaceAll(/_(\w)/g, (match, p1) => p1.toUpperCase()) as keyof Player;
+      // If the property is not 'level', sort by that property
+      this.players = [...this.players].sort((a, b) => {
+        const aValue = a[playerProperty] ?? 0;
+        const bValue = b[playerProperty] ?? 0;
+        const type = typeof a[playerProperty];
+        if (type === 'number') {
+          if (this.reverse) return Number(bValue) - Number(aValue);
+          return Number(aValue) - Number(bValue);
+        } else {
+          if (this.reverse) return (bValue as string).localeCompare(aValue as string);
+          return (aValue as string).localeCompare(bValue as string);
+        }
+      });
+    }
+    this.players = this.players.map((player, index) => {
+      player.rank = index + 1;
+      return player;
+    });
+    this.cdr.detectChanges();
+  }
+
+  public exportData(): void {
+    const headers = [
+      'Rank',
+      'Player Name',
+      'Alliance Rank',
+      'Level',
+      'Current Might',
+      'Highest Might',
+      'Current Loot',
+      'Highest Loot',
+      'Current Glory',
+      'Highest Glory',
+      'Current Honor',
+      'Highest Honor',
+      'Peace Disabled At',
+      'Distance (m)',
+    ];
+    const rows: any[][] = [];
+    this.players.forEach((player) => {
+      const row = [
+        player.rank,
+        this.utilitiesService.escapeCsv(player.playerName),
+        `url=/assets/alliance_ranks/${player.allianceRank}.png`,
+        this.utilitiesService.constructPlayerLevel(player.level ?? 0, player.legendaryLevel ?? 0),
+        Number(player.mightCurrent),
+        Number(player.mightAllTime),
+        Number(player.lootCurrent),
+        Number(player.lootAllTime),
+        Number(player.currentFame),
+        Number(player.highestFame),
+        Number(player.honor),
+        Number(player.maxHonor),
+        player.peaceDisabledAt
+          ? this.utilitiesService.escapeCsv(new Date(player.peaceDisabledAt).toLocaleString())
+          : '',
+        Number(player.distance ?? 0),
+      ];
+      rows.push(row);
+    });
+    void this.utilitiesService.exportDataXlsx(
+      'Players',
+      headers,
+      rows,
+      `alliance_players_${this.allianceName.replaceAll(' ', '_')}_${new Date().toISOString()}.xlsx`,
+    );
+  }
+
+  /**
+   * Open the modal for the first formula.
+   * This method uses KaTeX to render the formula in the modal.
+   */
+  public async openModal1(): Promise<void> {
+    const { default: katex } = await import('katex');
+    const target = this.el.nativeElement.querySelector('.katex-target');
+    katex.render(
+      String.raw`\text{Might}_{\text{day}} = \frac{1}{N} \sum_{i=1}^{N} \left( M_i^{\text{end}} - M_i^{\text{start}} \right)`,
+      target,
+      {
+        displayMode: true,
+        throwOnError: false,
+      },
+    );
+  }
+
+  /**
+   * Open the modal for the second formula.
+   * This method uses KaTeX to render the formula in the modal.
+   */
+  public async openModal2(): Promise<void> {
+    const { default: katex } = await import('katex');
+    const target = this.el.nativeElement.querySelector('.katex-target-var');
+    katex.render(
+      String.raw`\text{Might}_{\text{day}} = \frac{1}{N} \sum_{i=1}^{N} \left( \max(M_i^{\text{day}}) - \min(M_i^{\text{day}}) \right)`,
+      target,
+      {
+        displayMode: true,
+        throwOnError: false,
+      },
+    );
+  }
+
+  public getMonthNameByDate(date: string): string {
+    const [year, month] = date.split('-');
+    return this.translateService.instant(this.monthNames[Number(month) - 1]) + ' ' + year;
+  }
+
+  public async changeTab(tab: ISelectedTab): Promise<void> {
+    this.selectedTab = tab;
+    if ((tab === 'stats' || tab === 'progress') && !this.statsFinished && !this.statsInProgress) {
+      this.statsInProgress = true;
+      await this.loadDetailsEventPlayerStats();
+      this.statsFinished = true;
+      this.statsInProgress = false;
+    }
+    if (tab === 'progress' && !this.progressCalcInProgress && !this.progressCalcFinished) {
+      this.progressCalcInProgress = true;
+      //await this.loadProgressEventPlayerStats();
+      this.progressCalcFinished = true;
+      this.progressCalcInProgress = false;
+    } else if (tab === 'movements' && this.movementsResponseTime === 0) {
+      await this.initMovements();
+    }
+    if (tab === 'health') {
+      await this.loadHealthEventPlayerStats();
+    }
+    this.cdr.detectChanges();
+    setTimeout(() => {
+      this.cdr.detectChanges();
+    }, 0);
+  }
+
+  public toggleFavorite(player: Player): void {
+    this.followService.togglePlayer(player.playerId);
+    player.isFavorite = this.followService.isFollowingPlayer(player.playerId);
+    this.cdr.detectChanges();
+  }
+
+  public isFollowingAlliance(): boolean {
+    return this.followService.isFollowingAlliance(this.allianceId);
+  }
+
+  public toggleFollowAlliance(): void {
+    this.followService.toggleAlliance(this.allianceId);
+    this.cdr.detectChanges();
+  }
+
+  private async getAllianceMembers(): Promise<ApiAlliancePlayersSearchResponse | undefined> {
+    let response = await this.apiRestService.getAllianceStats(
+      this.allianceId,
+      this.playerNameForDistance,
+      this.selectedKingdomId,
+    );
+    if (response.success === false) {
+      if (response.error === 'Invalid player name') {
+        this.toastService.add(ErrorType.NO_PLAYER_FOUND, 20_000);
+        void this.resetDistanceColumn();
+        this.playerNameForDistance = '';
+        response = await this.apiRestService.getAllianceStats(this.allianceId, '', 0);
+        if (response.success === false) {
+          this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+          return;
+        }
+      } else if (response.error === 'Player not in this realm') {
+        this.toastService.add(ErrorType.NO_PLAYER_FOUND, 20_000);
+        return;
+      } else {
+        this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+        return;
+      }
+    }
+    return response.data;
+  }
+
+  private preloadHeroBackdrop(): Promise<void> {
+    if (!this.isBrowser) {
+      return Promise.resolve();
+    }
+    const image = new Image();
+    image.sizes = '100vw';
+    image.srcset = `${HERO_BACKDROP_ROOT}poster-960.webp 960w, ${HERO_BACKDROP_ROOT}poster.webp 1920w`;
+    image.src = `${HERO_BACKDROP_ROOT}poster.webp`;
+    return image.decode().catch(() => {});
+  }
+
+  private async processAllianceInit(allianceId: number): Promise<void> {
+    const heroBackdrop = this.preloadHeroBackdrop();
+    const tournamentBadges = this.loadTournamentBadges(allianceId);
+    const lastUpdate = this.loadLastUpdate();
+    const data = await this.getAllianceMembers();
+    if (!data) return;
+    this.players = this.mapPlayersFromApi(data.players);
+    if (this.playerNameForDistance !== '') {
+      this.addHeaderTableBlock();
+    }
+    this.addPageTitle(data.alliance_name);
+    this.allianceName = data.alliance_name;
+    this.allianceData = data;
+    this.descriptionHistory = this.buildDescriptionHistory(data.description_history);
+    const updatesPlayers = await this.apiRestService.getUpdatePlayersAlliance(allianceId);
+    if (updatesPlayers.success === false) {
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+      return;
+    }
+    this.updatesPlayers = updatesPlayers.data.updates;
+    this.processUpdatesData();
+    const globalResponse = await this.apiRestService.getServerGlobalStats();
+    this.initLedgers(globalResponse.success ? (globalResponse.data.at(-1) ?? null) : null);
+    // A hero that grows once shown shifts the whole page
+    await Promise.race([
+      Promise.all([heroBackdrop, tournamentBadges, lastUpdate]),
+      new Promise((resolve) => setTimeout(resolve, HERO_GRACE_MS)),
+    ]);
+    if (this.isDestroyed) {
+      return;
+    }
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  private async loadTournamentBadges(allianceId: number): Promise<void> {
+    const response = await this.apiRestService.getAllianceTournamentStandings(allianceId);
+    if (response.success === false || this.isDestroyed) return;
+    this.tournamentBadges = this.buildTournamentBadges(response.data);
+    this.cdr.detectChanges();
+  }
+
+  private buildTournamentBadges(standings: ApiAllianceTournamentStandingsResponse): TournamentBadge[] {
+    const badges: TournamentBadge[] = [];
+    if (standings.grand_tournament) {
+      badges.push(
+        this.buildTournamentBadge('Le Grand Tournoi', '/grand-tournament', 'ame', standings.grand_tournament),
+      );
+    }
+    if (standings.rift_raid) {
+      badges.push(this.buildTournamentBadge('Tournoi de la Faille', '/rift-raid', 'arme', standings.rift_raid));
+    }
+    return badges;
+  }
+
+  private buildTournamentBadge(
+    labelKey: string,
+    route: string,
+    divisionKeyPrefix: string,
+    standing: ApiTournamentStanding,
+  ): TournamentBadge {
+    return {
+      labelKey,
+      route,
+      divisionNameKey: `${divisionKeyPrefix}_division_name_${standing.division}`,
+      standing,
+      queryParams: {
+        date: standing.date,
+        division: standing.division,
+        subdivision: standing.subdivision,
+      },
+    };
+  }
+
+  private async loadLastUpdate(): Promise<void> {
+    const data = await firstValueFrom(this.utilitiesService.data$.pipe(first((data) => data !== null)));
+    if (this.isDestroyed) return;
+    this.lastUpdate = data.last_update.might;
+    this.cdr.detectChanges();
+  }
+
+  private init(): void {
+    const serverName = this.apiRestService.serverService.currentServer?.name;
+    const allianceDistancePlayerName = this.localStorage.getItem('allianceDistancePlayerName_' + serverName);
+    if (allianceDistancePlayerName) {
+      this.playerNameForDistance = allianceDistancePlayerName;
+    }
+    this.intervalId = setInterval(() => {
+      this.currentMessageIndex = (this.currentMessageIndex + 1) % this.loadingMessages.length;
+      this.message = this.loadingMessages[this.currentMessageIndex];
+      this.cdr.detectChanges();
+    }, 2000);
+    this.route.params.subscribe(async (parameters) => {
+      const allianceId = parameters['allianceId'];
+      this.allianceId = allianceId;
+      if (allianceId && !Number.isNaN(allianceId) && allianceId > 0) {
+        try {
+          await this.processAllianceInit(allianceId);
+        } catch {
+          this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+          this.isInLoading = false;
+        }
+      } else {
+        this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+        this.isInLoading = false;
+        void this.router.navigate(['/']);
+      }
+    });
+  }
+
+  private processUpdatesData(): void {
+    const groupedByDate = new Map<string, GroupedUpdatesByDate>();
+    const currentAllianceId = this.allianceId;
+
+    this.updatesPlayers.forEach((update) => {
+      const action = update.new_alliance_id == currentAllianceId ? 'joined' : 'left';
+
+      const levelTranslate = this.translateService.instant('Niveau');
+      const mightTranslate = this.translateService.instant('Points de puissance').toLowerCase();
+
+      const level =
+        update.level && update.level >= 70 && update.legendary_level
+          ? `${levelTranslate} ${update.level}/${update.legendary_level}`
+          : `${levelTranslate} ${update.level}`;
+
+      const { v, unit } = this.getUnitByValue(update.might_current);
+
+      const might_change = action === 'joined' ? `+${v}${unit} ${mightTranslate}` : `-${v}${unit} ${mightTranslate}`;
+
+      const eventDate = new Date(update.created_at);
+      eventDate.setHours(eventDate.getHours(), 0, 0, 0);
+      const eventDateString = this.utilitiesService.toLocalDayKey(eventDate);
+      if (!groupedByDate.has(eventDateString)) {
+        groupedByDate.set(eventDateString, {
+          date: eventDate.toISOString(),
+          updates: [],
+        });
+      }
+      const date = new Date(update.created_at);
+      date.setHours(date.getHours(), 0, 0, 0);
+      groupedByDate.get(eventDateString)?.updates.push({
+        created_at: date.toISOString(),
+        action,
+        player_name: update.player_name,
+        level,
+        might_change,
+      });
+    });
+
+    this.groupedUpdates = [...groupedByDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+    this.groupedUpdatedByMonths = this.groupedUpdates.reduce(
+      (accumulator, update) => {
+        const date = new Date(update.date);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const key = `${year}-${month}`;
+        if (!accumulator[key]) {
+          accumulator[key] = [];
+        }
+        accumulator[key].push(update);
+        return accumulator;
+      },
+      {} as Record<string, GroupedUpdatesByDate[]>,
+    );
+    this.setNbMovementsForDates();
+  }
+
+  private addVariations(data: { date: string; point: number }[]): { date: string; point: number; variation: number }[] {
+    const dataWithVariations = data.map((item, index) => {
+      const previousItem = data[index - 1];
+      if (previousItem) {
+        const variation = item.point - previousItem.point;
+        return { ...item, variation };
+      }
+      return { ...item, variation: 0 };
+    });
+    return dataWithVariations;
+  }
+
+  private getAnnotations(data: { date: string; point: number }[]): XAxisAnnotations[] {
+    const timestamps = data.map((d) => new Date(d.date).getTime());
+    const minTime = Math.min(...timestamps);
+    const maxTime = Math.max(...timestamps);
+    const annotations: XAxisAnnotations[] = [];
+    let currentTime = new Date(minTime);
+    currentTime.setHours(6, 0, 0, 0); // We start at 06:00 AM of the first day
+
+    while (currentTime.getTime() < maxTime) {
+      const morningStart = new Date(currentTime);
+      morningStart.setHours(6, 0, 0, 0);
+
+      const afternoonStart = new Date(morningStart);
+      afternoonStart.setHours(12, 0, 0, 0);
+
+      const eveningStart = new Date(afternoonStart);
+      eveningStart.setHours(18, 0, 0, 0);
+
+      const nightStart = new Date(eveningStart);
+      nightStart.setHours(0, 0, 0, 0);
+      nightStart.setDate(nightStart.getDate() + 1);
+
+      const nextMorningStart = new Date(morningStart);
+      nextMorningStart.setDate(nextMorningStart.getDate() + 1);
+
+      annotations.push(
+        {
+          x: new Date(morningStart).setHours(0, 0, 0, 0),
+          x2: morningStart.getTime(),
+          fillColor: '#2196F3',
+          opacity: 0.1,
+        },
+        {
+          x: morningStart.getTime(),
+          x2: afternoonStart.getTime(),
+          fillColor: '#FFEB3B',
+          opacity: 0.2,
+        },
+        {
+          x: afternoonStart.getTime(),
+          x2: eveningStart.getTime(),
+          fillColor: '#4CAF50',
+          opacity: 0.2,
+        },
+        {
+          x: eveningStart.getTime(),
+          x2: nightStart.getTime(),
+          fillColor: '#F44336',
+          opacity: 0.2,
+        },
+      );
+
+      currentTime = new Date(nextMorningStart);
+    }
+    return annotations;
+  }
+
+  private async loadHealthEventPlayerStats(): Promise<void> {
+    const data = await this.apiRestService.getPlayerStatsPulsedForAlliance(this.allianceId);
+    if (data.success === false) {
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+      return;
+    }
+    const healthResponse = data.data;
+    this.mightPerHourTable = this.addVariations(healthResponse['might_per_hour']);
+    this.initMightPerHourChart(healthResponse['might_per_hour'], this.getAnnotations(healthResponse['might_per_hour']));
+    this.initDailyAvgMightChangeChart(healthResponse['daily_avg_might_change']);
+    this.initMightIntraVariationChart(healthResponse['might_intra_variation']);
+    this.topMightGain24h = healthResponse['top_might_gain_24h'].map((item) => {
+      return {
+        playerName: this.getPlayerName(item.player_id),
+        ...item,
+      };
+    });
+    this.topMightLoss24h = healthResponse['top_might_loss_24h'].map((item) => {
+      return {
+        playerName: this.getPlayerName(item.player_id),
+        ...item,
+      };
+    });
+    this.topMightGain7d = healthResponse['top_might_gain_7d'].map((item) => {
+      return {
+        playerName: this.getPlayerName(item.player_id),
+        ...item,
+      };
+    });
+    this.topMightLoss7d = healthResponse['top_might_loss_7d'].map((item) => {
+      return {
+        playerName: this.getPlayerName(item.player_id),
+        ...item,
+      };
+    });
+    this.isPulseChartReady = true;
+    this.cdr.detectChanges();
+  }
+
+  private async getGenericData(): Promise<{ data: ApiMovementsResponse; response: number }> {
+    return await this.apiRestService.getGenericData(
+      this.apiRestService.getMovementsbyAllianceId.bind(this.apiRestService),
+      this.page,
+      Number(this.search),
+      this.searchType,
+      null,
+      null,
+    );
+  }
+
+  private mapMovementsFromApi(movements: ApiMovementsResponse, rankFunction: (rank: number) => number): Movement[] {
+    if (movements.pagination) {
+      this.maxPage = movements.pagination.total_pages;
+    } else {
+      this.maxPage = 1;
+    }
+    return movements.movements.map((movement, index) => {
+      return {
+        rank: rankFunction(index),
+        player: movement.player_name,
+        playerId: movement.player_id ?? null,
+        allianceId: movement.alliance_id ?? null,
+        might: movement.player_might,
+        level: movement.player_level,
+        legendaryLevel: movement.player_legendary_level,
+        alliance: movement.alliance_name,
+        type: movement.castle_type,
+        date: movement.created_at,
+        positionOld: [movement.position_x_old, movement.position_y_old],
+        positionNew: [movement.position_x_new, movement.position_y_new],
+      };
+    });
+  }
+
+  private async initMovements(): Promise<void> {
+    this.isInMovementLoading = true;
+    this.cdr.detectChanges();
+    try {
+      this.page = 1;
+      this.search = this.allianceId.toString();
+      this.searchType = 'alliance';
+      const data = await this.getGenericData();
+      this.responseTime = data.response;
+      const movements = data.data;
+      this.movements = this.mapMovementsFromApi(movements, (index: number) => index + 1);
+      this.movementsResponseTime = data.response;
+    } catch {
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 5000);
+    } finally {
+      this.isInMovementLoading = false;
+      this.cdr.detectChanges();
+    }
+  }
+
+  private setNbMovementsForDates(): void {
+    const nbByDates = this.groupedUpdatedByMonths;
+    for (const key in nbByDates) {
+      this.nbMovementsByMonth[key] = { movements: 0, leaves: 0, joins: 0 };
+      this.nbMovementsByMonth[key].movements = nbByDates[key].reduce(
+        (accumulator, update) => accumulator + update.updates.length,
+        0,
+      );
+      this.nbMovementsByMonth[key].leaves = nbByDates[key].reduce(
+        (accumulator, update) => accumulator + update.updates.filter((u) => u.action === 'left').length,
+        0,
+      );
+      this.nbMovementsByMonth[key].joins = nbByDates[key].reduce(
+        (accumulator, update) => accumulator + update.updates.filter((u) => u.action === 'joined').length,
+        0,
+      );
+    }
+  }
+
+  /**
+   * This method groups event data by time gaps.
+   * It takes an array of data points, each represented as a tuple of timestamp and value,
+   * and groups them into segments based on a specified time gap.
+   * @param data Data to group, represented as an array of tuples [timestamp, value].
+   * @param timeGap Time gap in milliseconds to determine when to start a new segment.
+   * @returns An array of grouped data segments, where each segment is an array of tuples [timestamp, value].
+   */
+  private groupEventDataByTimeGaps(
+    data: [number, number][],
+    timeGap: number = 24 * 60 * 60 * 1000,
+  ): [number, number][][] {
+    data = [...new Set(data.map((item) => JSON.stringify(item)))].map((item) => JSON.parse(item));
+    // Data is sorted by timestamp to ensure correct grouping
+    data.sort((a, b) => a[0] - b[0]);
+    let currentEvent: ApiGenericData[] = [];
+    let eventDataSegmentsReference: ApiGenericData[][] = [];
+    // Iterate through the data and group by time gaps to create segments
+    for (let index = 0; index < data.length; index++) {
+      if (index > 0) {
+        const date1 = data[index - 1][0];
+        const date2 = data[index][0];
+        if (date2 - date1 > timeGap) {
+          if (currentEvent.length > 0) {
+            eventDataSegmentsReference ??= [];
+            eventDataSegmentsReference.push(currentEvent);
+          }
+          currentEvent = [];
+        }
+      }
+      currentEvent.push({
+        date: new Date(data[index][0]).toISOString(),
+        point: data[index][1],
+      });
+    }
+    if (currentEvent.length > 0) {
+      eventDataSegmentsReference ??= [];
+      eventDataSegmentsReference.push(currentEvent);
+    }
+    return eventDataSegmentsReference.map((event) => {
+      return event.map((event) => {
+        return [new Date(event.date).getTime(), event.point];
+      });
+    });
+  }
+
+  private generateEventTitle(eventTimestamps: [number, number][]): string {
+    const currentDate = new Date();
+    const lastTimestamp = eventTimestamps.at(-1);
+    if (!lastTimestamp) {
+      return this.translateService.instant('Événement en cours');
+    }
+    const lastDate = new Date(lastTimestamp[0]);
+    lastDate.setHours(lastDate.getHours() + 3);
+
+    const locale = this.languageService.getCurrentLang();
+    if (lastDate.getTime() < currentDate.getTime()) {
+      const firstDate = new Date(eventTimestamps[0][0]);
+      const lastDate = new Date(eventTimestamps.at(-1)![0]);
+      const name = this.translateService.instant('Événement du 0 au 0', {
+        start: firstDate.toLocaleDateString(locale).slice(0, -5),
+        end: lastDate.toLocaleDateString(locale).slice(0, -5),
+      });
+      return name;
+    } else {
+      return this.translateService.instant('Événement en cours');
+    }
+  }
+
+  private getPointsAndDates(data: EventGenericVariation[]): { dates: string[]; points: number[] } {
+    const dates = data.map((point) => {
+      const date = point['date'].slice(0, Math.max(0, point['date'].length - 3));
+      return date;
+    });
+    const points = data.map((point) => {
+      return point['point'];
+    });
+    return { dates, points };
+  }
+
+  private initMightHistoryData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData('might', ApiPlayerStatsType.might, data, this.graphPages.player_might_history);
+    const config = this.statsCardConfigs.find((config) => config.chartKey === 'might');
+    if (config) {
+      this.initStatsCardData(config, data, ApiPlayerStatsType.might);
+    }
+  }
+
+  private initBerimondKingdomData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData(
+      'berimond_kingdom',
+      ApiPlayerStatsType.berimond_kingdom,
+      data,
+      this.graphPages.player_event_berimond_kingdom_history,
+    );
+  }
+
+  private initWarRealmsData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData(
+      'war_realms',
+      ApiPlayerStatsType.war_realms,
+      data,
+      this.graphPages.player_event_war_realms_history,
+    );
+  }
+
+  private initBloodcrowData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData(
+      'bloodcrow',
+      ApiPlayerStatsType.bloodcrow,
+      data,
+      this.graphPages.player_event_bloodcrow_history,
+    );
+  }
+
+  private initNomadData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData('nomad', ApiPlayerStatsType.nomad, data, this.graphPages.player_event_nomad_history);
+  }
+
+  private initSamuraiData(data: ApiPlayerStatsForAlliance): void {
+    this.initGenericEventData(
+      'samurai',
+      ApiPlayerStatsType.samurai,
+      data,
+      this.graphPages.player_event_samurai_history,
+    );
+  }
+
+  private initLootHistoryData(data: ApiPlayerStatsForAlliance): void {
+    const serieChoosen = this.graphPages.player_loot_history;
+    let weekStart = lootWeekStart(Date.now(), this.lootReset);
+    for (let page = 0; page < serieChoosen; page++) weekStart = lootWeekStart(weekStart - 1, this.lootReset);
+    const startOfWeek = new Date(weekStart);
+    if (startOfWeek.getTime() < FIRST_LOOT_EVENT_TIMESTAMP) {
+      this.graphPages[ApiPlayerStatsType.loot] = serieChoosen - 1;
+      return;
+    }
+
+    const weekHours = (lootWeekEnd(weekStart, this.lootReset) - weekStart) / MS_PER_HOUR;
+    const endOfWeek = new Date(startOfWeek.getTime() + (weekHours - 1) * MS_PER_HOUR);
+    const showedEndOfWeek = new Date(endOfWeek.getTime() - 24 * MS_PER_HOUR);
+    this.eventTitles['loot'] = this.translateService.instant('Événement du 0 au 0', {
+      start: startOfWeek.toLocaleDateString().slice(0, -5),
+      end: showedEndOfWeek.toLocaleDateString().slice(0, -5),
+    });
+
+    const timestampsByHour = Array.from(
+      { length: weekHours },
+      (_, index) => startOfWeek.getTime() + index * MS_PER_HOUR,
+    );
+    const playerMap = this.groupLootRecordsByPlayer(data);
+    const hoursToRemove = this.findIdleLootHours(playerMap, timestampsByHour);
+    const filteredTimestampsByHour = timestampsByHour.filter((hour) => !hoursToRemove.has(hour));
+
+    const segmentsWithColors = this.buildLootSegments(playerMap, filteredTimestampsByHour, hoursToRemove, serieChoosen);
+    segmentsWithColors.sort((a, b) => (b.segment.lastValue ?? 0) - (a.segment.lastValue ?? 0));
+    const selectedSegmentsMapped = segmentsWithColors.map(({ segment }) => segment);
+    const filledColorsMapped = segmentsWithColors.map(({ color }) => color);
+    this.appendIdleLootSegments(selectedSegmentsMapped, filledColorsMapped, timestampsByHour);
+
+    this.initChartOption('loot', selectedSegmentsMapped, filledColorsMapped);
+    this.constructParticipationRateChart('loot', selectedSegmentsMapped);
+    this.constructRadarChart('loot', selectedSegmentsMapped);
+    const config = this.statsCardConfigs.find((config) => config.chartKey === 'loot');
+    if (config) {
+      this.initStatsCardData(config, selectedSegmentsMapped);
+    }
+  }
+
+  private groupLootRecordsByPlayer(data: ApiPlayerStatsForAlliance): Map<number, LootPlayerSeries> {
+    const playerMap = new Map<number, LootPlayerSeries>();
+    for (const { player_id, date, point } of data[ApiPlayerStatsType.loot]) {
+      const dateHour = new Date(date);
+      dateHour.setMinutes(0, 0, 0);
+      let player = playerMap.get(player_id);
+      if (!player) {
+        player = { playerName: this.getPlayerName(player_id.toString()), segments: [] };
+        playerMap.set(player_id, player);
+      }
+      player.segments.push([dateHour.getTime(), point]);
+    }
+    return playerMap;
+  }
+
+  private findIdleLootHours(playerMap: Map<number, LootPlayerSeries>, timestampsByHour: number[]): Set<number> {
+    const hoursToRemove = new Set<number>();
+    for (const { segments } of playerMap.values()) {
+      const scoresByTimestamp = new Map(segments);
+      const alignedData: [number, number][] = timestampsByHour.map((hourTimestamp) => [
+        hourTimestamp,
+        scoresByTimestamp.get(hourTimestamp) || 0,
+      ]);
+      this.markZeroRunsFollowedByPoints(alignedData, hoursToRemove);
+    }
+    return hoursToRemove;
+  }
+
+  private markZeroRunsFollowedByPoints(alignedData: [number, number][], hoursToRemove: Set<number>): void {
+    for (let index = 1; index < alignedData.length; index++) {
+      const currentScore = alignedData[index][1];
+      const previousScore = alignedData[index - 1][1];
+      if (currentScore !== 0 || previousScore <= currentScore) continue;
+      const hasFutureHigherPoint = alignedData.slice(index + 1).some(([, futureScore]) => futureScore > currentScore);
+      if (!hasFutureHigherPoint) continue;
+      for (let cursor = index; cursor < alignedData.length && alignedData[cursor][1] === 0; cursor++) {
+        hoursToRemove.add(alignedData[cursor][0]);
+      }
+    }
+  }
+
+  private buildLootSegments(
+    playerMap: Map<number, LootPlayerSeries>,
+    filteredTimestampsByHour: number[],
+    hoursToRemove: Set<number>,
+    serieChoosen: number,
+  ): { segment: LootSegment; color: string }[] {
+    const segmentsWithColors: { segment: LootSegment; color: string }[] = [];
+    for (const { playerName, segments } of playerMap.values()) {
+      const scoresByTimestamp = new Map(segments.filter(([timestamp]) => !hoursToRemove.has(timestamp)));
+      const alignedData: [number, number | null][] = filteredTimestampsByHour.map((hourTimestamp) => [
+        hourTimestamp,
+        scoresByTimestamp.get(hourTimestamp) || 0,
+      ]);
+      const lastValue =
+        serieChoosen === 0 ? Math.max(...alignedData.map(([, score]) => score || 0)) : (alignedData.at(-1)?.[1] ?? 0);
+      if (lastValue === 0) continue;
+      const { v, unit } = this.getUnitByValue(lastValue);
+      segmentsWithColors.push({
+        segment: { name: `${playerName} (${v}${unit})`, data: alignedData, lastValue },
+        color: this.playerColor(playerName),
+      });
+    }
+    return segmentsWithColors;
+  }
+
+  private appendIdleLootSegments(segments: LootSegment[], colors: string[], timestampsByHour: number[]): void {
+    if (this.players.length === segments.length) return;
+    const playersWithNoData = this.players.filter(
+      (player) => !segments.some((segment) => segment.name.includes(player.playerName)),
+    );
+    for (const player of playersWithNoData) {
+      segments.push({
+        name: `${player.playerName} 💤`,
+        data: timestampsByHour.map((hourTimestamp) => [hourTimestamp, -1] as [number, number | null]),
+        lastValue: 0,
+        hidden: true,
+      });
+      colors.push(this.playerColor(player.playerName));
+    }
+  }
+
+  private formatPlayerNameForStatsCard(name: string): string {
+    if (name.endsWith(' 💤')) {
+      return name.slice(0, -2);
+    } else {
+      const regex = /\s\(([\d,.]+[A-Za-z]?)\)$/;
+      const match = regex.exec(name);
+      if (match) {
+        return name.replace(regex, '');
+      }
+      return name;
+    }
+  }
+
+  private initStatsCardData(
+    config: CardConfig,
+    data: ApiPlayerStatsForAlliance | { name: string; data: [number, number | null][]; lastValue: number }[],
+    eventKey?: ApiPlayerStatsType,
+  ): void {
+    let statsCardData: {
+      playerName: string;
+      point: number;
+      date: string;
+      variation: number;
+    }[] = [];
+
+    if (Array.isArray(data)) {
+      statsCardData = data.map((entry) => ({
+        playerName: this.formatPlayerNameForStatsCard(entry.name),
+        point: entry.lastValue,
+        date: '',
+        variation: 0,
+      }));
+    } else if (eventKey) {
+      const eventData = data[eventKey];
+      if (!eventData) return;
+      const lastRecordByPlayer = new Map<string, { point: number; date: string }>();
+      for (const record of eventData) {
+        const playerName = this.getPlayerName(record.player_id.toString());
+        const existing = lastRecordByPlayer.get(playerName);
+        if (!existing || new Date(record.date).getTime() > new Date(existing.date).getTime()) {
+          lastRecordByPlayer.set(playerName, {
+            point: record.point,
+            date: record.date,
+          });
+        }
+      }
+      statsCardData = [...lastRecordByPlayer.entries()].map(([playerName, { point, date }]) => ({
+        playerName,
+        point,
+        date,
+        variation: 0,
+      }));
+      statsCardData.sort((a, b) => b.point - a.point);
+    }
+    const configIndex = this.statsCardConfigs.findIndex((c) => c.chartKey === config.chartKey);
+    if (configIndex !== -1) {
+      this.statsCardConfigs[configIndex].data = statsCardData;
+    }
+  }
+
+  private getPlayerName(playerId: string): string {
+    return this.players.find((player) => player.playerId.toString() === playerId)?.playerName || 'Joueur inconnu';
+  }
+
+  private buildGlobalTimeline(selectedSegments: { name: string; data: [number, number][] }[]): number[] {
+    const allDates = new Set<number>();
+    selectedSegments.forEach((segment) => {
+      const segmentData = segment.data;
+      segmentData.forEach((point) => allDates.add(point[0]));
+    });
+    return [...allDates].sort((a, b) => a - b);
+  }
+
+  private initGenericEventData(
+    chartKey: keyof typeof ApiPlayerStatsType,
+    eventKey: ApiPlayerStatsType,
+    data: Record<ApiPlayerStatsType, ApiPlayerStatsAlliance[]>,
+    serieChoosen: number,
+  ): void {
+    const eventData = data[eventKey];
+    if (!eventData) return;
+    const playerMap = this.groupEventRecordsByPlayer(eventData);
+
+    if (eventKey === ApiPlayerStatsType.might) {
+      this.initMightChart(chartKey, playerMap);
+      return;
+    }
+
+    const allEventTimestamps: number[] = [];
+    for (const { segments } of playerMap.values()) {
+      for (const [timestamp] of segments.data) allEventTimestamps.push(timestamp);
+    }
+    const groupedTimestamps = this.groupEventDataByTimeGaps(allEventTimestamps.map((timestamp) => [timestamp, 0])).map(
+      (group) => group.map(([timestamp]) => timestamp),
+    );
+    const serieIndex = serieChoosen <= -1 ? groupedTimestamps.length - serieChoosen * -1 : serieChoosen;
+    const selectedTimestamps = groupedTimestamps[serieIndex];
+    if (!selectedTimestamps) {
+      this.graphPages[eventKey]++;
+      return;
+    }
+    this.eventTitles[chartKey] = this.generateEventTitle(selectedTimestamps.map((timestamp) => [timestamp, 0]));
+
+    const segmentsWithColors = this.buildEventSegments(playerMap, selectedTimestamps);
+    segmentsWithColors.sort((a, b) => b.segment.lastValue - a.segment.lastValue);
+    const selectedSegmentsMapped = segmentsWithColors.map(({ segment }) => segment);
+    const filledColorsMapped = segmentsWithColors.map(({ color }) => color);
+    const globalTimeline = this.buildGlobalTimeline(selectedSegmentsMapped);
+    const filledSeries: EventSerie[] = selectedSegmentsMapped.map((segment) => ({
+      custom: { playerName: segment.playerName },
+      name: segment.name,
+      data: this.alignSeriesToTimeline(segment.data, globalTimeline),
+      hidden: false,
+    }));
+    this.appendIdleEventSeries(filledSeries, filledColorsMapped, globalTimeline);
+
+    this.initChartOption(chartKey, filledSeries, filledColorsMapped);
+    this.constructParticipationRateChart(chartKey, filledSeries);
+    this.constructRadarChart(chartKey, filledSeries);
+    const statsCardConfig = this.statsCardConfigs.find((card) => card.chartKey === chartKey);
+    if (statsCardConfig) {
+      this.initStatsCardData(statsCardConfig, selectedSegmentsMapped);
+    }
+  }
+
+  private groupEventRecordsByPlayer(eventData: ApiPlayerStatsAlliance[]): Map<number, EventPlayerSeries> {
+    const playerMap = new Map<number, EventPlayerSeries>();
+    for (const { player_id, date, point } of eventData) {
+      let player = playerMap.get(player_id);
+      if (!player) {
+        player = {
+          playerName: this.getPlayerName(player_id.toString()),
+          segments: { name: '', data: [], lastValue: 0 },
+        };
+        playerMap.set(player_id, player);
+      }
+      player.segments.data.push([new Date(date).getTime(), point]);
+    }
+    return playerMap;
+  }
+
+  private initMightChart(chartKey: keyof typeof ApiPlayerStatsType, playerMap: Map<number, EventPlayerSeries>): void {
+    this.eventTitles[chartKey] = '-';
+    const segmentsWithColors: { segment: EventSegment; color: string }[] = [];
+    for (const { playerName, segments } of playerMap.values()) {
+      const lastValue = segments.data.at(-1)?.[1] ?? 0;
+      const { v, unit } = this.getUnitByValue(lastValue);
+      segmentsWithColors.push({
+        segment: { name: `${playerName} (${v}${unit})`, data: segments.data, lastValue },
+        color: this.playerColor(playerName),
+      });
+    }
+    segmentsWithColors.sort((a, b) => b.segment.lastValue - a.segment.lastValue);
+    const selectedSegmentsMapped = segmentsWithColors.map(({ segment }) => segment);
+    const globalTimeline = this.buildGlobalTimeline(selectedSegmentsMapped);
+    const filledSeries: EventSerie[] = selectedSegmentsMapped.map((segment) => ({
+      name: segment.name,
+      data: this.alignSeriesToTimeline(segment.data, globalTimeline),
+      hidden: false,
+    }));
+    this.initChartOption(
+      chartKey,
+      filledSeries,
+      segmentsWithColors.map(({ color }) => color),
+    );
+  }
+
+  private buildEventSegments(
+    playerMap: Map<number, EventPlayerSeries>,
+    selectedTimestamps: number[],
+  ): { segment: EventSegment; color: string }[] {
+    const segmentsWithColors: { segment: EventSegment; color: string }[] = [];
+    for (const { playerName, segments } of playerMap.values()) {
+      const scoresByTimestamp = new Map(segments.data);
+      const alignedData: [number, number][] = selectedTimestamps.map((timestamp) => [
+        timestamp,
+        scoresByTimestamp.get(timestamp) || 0,
+      ]);
+      const lastValue = alignedData.at(-1)?.[1] ?? 0;
+      if (lastValue === 0) continue; // If the player is completely inactive, skip them
+      const { v, unit } = this.getUnitByValue(lastValue);
+      segmentsWithColors.push({
+        segment: { playerName, name: `${playerName} (${v}${unit})`, data: alignedData, lastValue },
+        color: this.playerColor(playerName),
+      });
+    }
+    return segmentsWithColors;
+  }
+
+  private appendIdleEventSeries(filledSeries: EventSerie[], colors: string[], globalTimeline: number[]): void {
+    if (filledSeries.length === this.players.length) return;
+    const missingPlayers = this.players.filter(
+      (player) => !filledSeries.some((serie) => serie.custom?.['playerName'] === player.playerName),
+    );
+    for (const player of missingPlayers) {
+      filledSeries.push({
+        name: player.playerName + ' 💤',
+        data: globalTimeline.map((timestamp) => [timestamp, -1]),
+        hidden: true,
+      });
+      colors.push(this.playersColors[player.playerName] || this.getPlayerColor(player.playerName));
+    }
+  }
+
+  private playerColor(playerName: string): string {
+    this.playersColors[playerName] ||= this.getPlayerColor(playerName);
+    return this.playersColors[playerName];
+  }
+
+  /**
+   * This method aligns a series of data points to a global timeline.
+   * It takes an array of segment data points, each represented as a tuple of timestamp and
+   * value, and a global timeline represented as an array of timestamps.
+   * @param segmentData Segment data to align, represented as an array of tuples [timestamp, value].
+   * @param globalTimeline Global timeline to align the segment data to, represented as an array of timestamps.
+   * @returns An array of tuples [timestamp, value] where each timestamp is from the global timeline,
+   * and the value is either the corresponding value from the segment data or 0 if no value exists for that timestamp.
+   */
+  private alignSeriesToTimeline(segmentData: [number, number][], globalTimeline: number[]): [number, number][] {
+    return globalTimeline.map((date) => {
+      const point = segmentData.find((point) => point[0] === date);
+      return [date, point ? point[1] : 0];
+    });
+  }
+
+  /**
+   * This method returns a formatted value and its corresponding unit based on the input value.
+   * @param value The value to format, can be a string or a number.
+   * @returns An object containing the formatted value as a string and its unit. For example, if the value is 1500,
+   * it returns { v: "1.50", unit: "k" }.
+   * The units are defined as follows:
+   * - "k" for thousands (1000 to 999999)
+   * - "M" for millions (1,000,000 to 999,999,999)
+   * - "G" for billions (1,000,000,000 to 999,999,999,999)
+   * - "T" for trillions (1,000,000,000,000 and above)
+   * If the value is less than 1000, it returns the value as is with no unit.
+   */
+  private getUnitByValue(value: string | number): { v: string; unit: string } {
+    if (typeof value !== 'number' || !Number.isNaN(value)) {
+      value = Number(value);
+    }
+    let unit = '';
+    if (value >= 1000 && value < 1_000_000) {
+      unit = 'k';
+      value /= 1000;
+    } else if (value >= 1_000_000 && value < 1_000_000_000) {
+      unit = 'M';
+      value /= 1_000_000;
+    } else if (value >= 1_000_000_000 && value < 1_000_000_000_000) {
+      unit = 'G';
+      value /= 1_000_000_000;
+    } else if (value >= 1_000_000_000_000) {
+      unit = 'T';
+      value /= 1_000_000_000_000;
+    }
+    return { v: value.toFixed(2), unit };
+  }
+
+  /**
+   * This method generates a color based on the player's name using a hash function.
+   * @param name The name of the player to generate a color for.
+   * @returns A string representing the RGB color in the format 'rgb(r, g, b)'.
+   */
+  private getPlayerColor(name: string): string {
+    let hash = 0;
+    for (let index = 0; index < name.length; index++) {
+      hash = (name.codePointAt(index) || 0) + ((hash << 5) - hash);
+    }
+    // Extract RGB values from the hash
+    const r = (hash >> 16) & 255;
+    const g = (hash >> 8) & 255;
+    const b = hash & 255;
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
+  private getDefaultTableDistanceEntry(): [string, string, (string | undefined)?, (boolean | undefined)?] {
+    return ['distance', 'Distance (m)', undefined, undefined];
+  }
+
+  private addHeaderTableBlock(): void {
+    if (this.membersTableHeader.length === this.defaultMembersTableHeaderSize) {
+      this.membersTableHeader.splice(-2, 0, this.getDefaultTableDistanceEntry());
+    }
+  }
+
+  private removeHeaderTableBlock(): void {
+    const distanceIndex = this.membersTableHeader.findIndex((entry) => entry[0] === 'distance');
+    if (distanceIndex !== -1) {
+      this.membersTableHeader.splice(distanceIndex, 1);
+    }
+  }
+
+  private initChartOption(name: keyof typeof ApiPlayerStatsType, data: ApexAxisChartSeries, color: string[]): void {
+    const dateFormat = this.translateService.instant('Date_4');
+    const isCumul = this.cumulSeries[name];
+    this.charts[name] = {
+      series: data,
+      title: {},
+      tooltip: {
+        shared: true,
+        x: {
+          format: dateFormat,
+        },
+        y: {
+          formatter: function (value): string {
+            return value > 0 ? formatThousands(value.toString()) : '';
+          },
+        },
+      },
+      chart: {
+        animations: {
+          enabled: false,
+        },
+        selection: {
+          enabled: true,
+        },
+        height: ChartTypeHeights.DEFAULT,
+        type: 'area',
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+        zoom: {
+          type: 'x',
+          enabled: true,
+          autoScaleYaxis: true,
+        },
+        stacked: isCumul,
+        stackType: isCumul ? 'normal' : undefined,
+        toolbar: {},
+      },
+      colors: color,
+      fill: {
+        type: 'gradient',
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      stroke: {
+        width: [2, 2, 0],
+        curve: 'smooth',
+      },
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      legend: {
+        show: true,
+        showForZeroSeries: true,
+      },
+      yaxis: {
+        labels: {
+          formatter: function (value): string {
+            return value === null ? '?' : formatThousands(value.toString());
+          },
+        },
+        min: 0,
+        forceNiceScale: true,
+      },
+      plotOptions: {},
+      xaxis: {
+        type: 'datetime',
+        labels: {
+          show: true,
+          rotate: -45,
+          rotateAlways: false,
+          hideOverlappingLabels: true,
+          showDuplicates: true,
+          datetimeFormatter: {
+            year: 'yyyy',
+            month: "MMM 'yy",
+            day: 'dd MMM',
+            hour: 'HH:mm',
+            minute: 'HH:mm',
+          },
+          datetimeUTC: false,
+          trim: false,
+          minHeight: undefined,
+          maxHeight: 120,
+          style: {
+            colors: [],
+            fontSize: '12px',
+            fontFamily: 'Helvetica, Arial, sans-serif',
+            cssClass: 'apexcharts-xaxis-label',
+          },
+        },
+      },
+    };
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.charts[name].chart.zoom.allowMouseWheelZoom = false;
+  }
+
+  private addPageTitle(allianceName: string): void {
+    const title = this.translateService.get('Alliance - 0', { allianceName });
+    title.subscribe((translatedTitle) => {
+      this.titleService.setTitle(translatedTitle);
+    });
+  }
+
+  private constructParticipationRateChart(
+    chartKey: keyof typeof ApiPlayerStatsType,
+    data: { name: string; data: [number, number | null][]; hidden?: boolean }[],
+  ): void {
+    // Participation chart, in pie chart, with the participation percentage in 2 series: participation and non-participation
+    const totalPlayers = data.length;
+    const totalParticipations = data.filter((player) => player.data.some((point) => (point[1] || 0) > 0)).length;
+    const totalNonParticipations = totalPlayers - totalParticipations;
+    const totalParticipationsRate = Number.parseFloat(((totalParticipations / totalPlayers) * 100).toFixed(2));
+    const totalNonParticipationsRate = Number.parseFloat(((totalNonParticipations / totalPlayers) * 100).toFixed(2));
+    this.initParticipationRateChart(chartKey, [totalParticipationsRate, totalNonParticipationsRate], totalPlayers);
+  }
+
+  private constructRadarChart(
+    chartKey: keyof typeof ApiPlayerStatsType,
+    data: { name: string; data: [number, number | null][]; hidden?: boolean }[],
+  ): void {
+    const categories = data.map((player) => player.name);
+    const series = data.map((player) => {
+      const max = Math.max(...player.data.map((point) => point[1] || 0));
+      return max;
+    });
+    const seriesFiltered = series.filter((value) => value > 0);
+    const categoriesFiltered = categories.filter((_, index) => series[index] > 0);
+    const logBases: Record<keyof typeof ApiPlayerStatsType, number> = {
+      might: 10,
+      loot: 10,
+      berimond_invasion: 10,
+      berimond_kingdom: 10,
+      nomad: 10,
+      samurai: 10,
+      bloodcrow: 10,
+      war_realms: 10,
+    };
+    this.initRadarChart(chartKey, categoriesFiltered, { name: 'Points', data: seriesFiltered }, logBases[chartKey]);
+  }
+
+  private getDailyAvgMightChange(data: { date: string; avg_diff: number }[]): { x: string; y: number }[] {
+    const dailyAvgMightChange: { x: string; y: number }[] = [];
+    const formatDate = this.translateService.instant('Date_7'); // 'dd/MM'
+    for (const item of data) {
+      const currentDate = new Date(item.date);
+      const targetedDateString = format(currentDate, formatDate);
+      dailyAvgMightChange.push({
+        x: targetedDateString,
+        y: Number(item.avg_diff.toFixed(0)),
+      });
+    }
+    return dailyAvgMightChange;
+  }
+
+  private getBasicBarChart(data: { date: string; avg_diff: number }[], serieName: string): ChartOptions {
+    const mp = this.translateService.instant('Points de puissance');
+    const getUnitByValue = this.getUnitByValue;
+    return {
+      series: [
+        {
+          name: serieName,
+          type: 'bar',
+          data: this.getDailyAvgMightChange(data),
+        },
+      ],
+      chart: {
+        height: ChartTypeHeights.DEFAULT,
+        type: 'bar',
+
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+        zoom: {
+          enabled: false,
+        },
+        animations: {
+          enabled: true,
+        },
+        toolbar: {},
+      },
+      colors: ['#000000'],
+      fill: {
+        type: 'gradient',
+      },
+      dataLabels: {
+        enabled: true,
+        formatter: function (value: number): string {
+          if (value === null || value === undefined) return '0';
+          return (
+            (value < 0 ? '-' : '+') +
+            Number(getUnitByValue(Math.abs(value)).v).toFixed(0) +
+            getUnitByValue(Math.abs(value)).unit
+          );
+        },
+        offsetY: -10,
+        style: {
+          fontSize: '12px',
+          colors: ['#333333'],
+        },
+      },
+      stroke: {
+        width: 1,
+        curve: 'smooth',
+      },
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      legend: {},
+      title: {},
+      xaxis: {},
+      yaxis: {
+        labels: {
+          formatter: function (value): string {
+            return value === null ? '?' : formatThousands(value.toString());
+          },
+        },
+        forceNiceScale: true,
+      },
+      plotOptions: {
+        bar: {
+          colors: {
+            ranges: [
+              {
+                from: -9_999_999_999,
+                to: -1_000_000,
+                color: '#c70000',
+              },
+              {
+                from: -1_000_000,
+                to: -50_000,
+                color: '#ff0000',
+              },
+              {
+                from: -50_000,
+                to: 0,
+                color: '#f09797',
+              },
+              {
+                from: 0,
+                to: 50_000,
+                color: '#afedb7',
+              },
+              {
+                from: 50_000,
+                to: 1_000_000,
+                color: '#3bc47e',
+              },
+              {
+                from: 1_000_000,
+                to: 9_999_999_999,
+                color: '#127a45',
+              },
+            ],
+          },
+          horizontal: false,
+        },
+      },
+      tooltip: {
+        y: {
+          formatter: function (value): string {
+            return value === null ? '?' : formatThousands(value.toString()) + ' ' + mp;
+          },
+        },
+      },
+    };
+  }
+
+  private initMightIntraVariationChart(data: { date: string; avg_diff: number }[]): void {
+    this.mightIntraVariationChart = this.getBasicBarChart(data, this.translateService.instant('Amplitude'));
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.mightIntraVariationChart.chart.zoom.allowMouseWheelZoom = false;
+  }
+
+  private initDailyAvgMightChangeChart(data: { date: string; avg_diff: number }[]): void {
+    const dailyAvgMightChangeChart = this.getBasicBarChart(data, this.translateService.instant('Moyenne'));
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    dailyAvgMightChangeChart.chart.zoom.allowMouseWheelZoom = false;
+    this.dailyAvgMightChangeChart = dailyAvgMightChangeChart;
+  }
+
+  private initMightPerHourChart(data: { date: string; point: number }[], annotations: XAxisAnnotations[]): void {
+    const dateFormat = this.translateService.instant('Date_4');
+    this.mightPerHourChart = {
+      series: [
+        {
+          type: 'line',
+          name: this.translateService.instant('Points de puissance'),
+          data: data.map((point) => point.point),
+        },
+      ],
+      chart: {
+        height: ChartTypeHeights.DEFAULT,
+        type: 'line',
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+        zoom: {
+          enabled: false,
+        },
+        animations: {
+          enabled: false,
+        },
+        toolbar: {},
+      },
+      colors: ['#09753e', '#333333'],
+      fill: {
+        type: 'gradient',
+      },
+      dataLabels: {
+        enabled: false,
+      },
+      stroke: {
+        width: 2,
+        curve: 'smooth',
+      },
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      legend: {
+        show: true,
+        showForZeroSeries: true,
+        position: 'top',
+        horizontalAlign: 'right',
+        floating: false,
+        fontSize: '14px',
+        fontFamily: 'Helvetica, Arial, sans-serif',
+        fontWeight: 400,
+        offsetX: 0,
+        offsetY: 0,
+        labels: {
+          colors: ['#a8a8a8'],
+          useSeriesColors: false,
+        },
+        itemMargin: {
+          horizontal: 0,
+          vertical: 0,
+        },
+        markers: {},
+      },
+      title: {},
+      tooltip: {
+        x: {
+          format: dateFormat,
+        },
+        y: {
+          formatter: function (value): string {
+            if (value === null) return '?';
+            if (value > 0) return formatThousands(value.toString());
+            return '0';
+          },
+        },
+      },
+      xaxis: {
+        type: 'datetime',
+        categories: data.map((point) => point.date),
+        labels: {
+          show: true,
+          rotate: -45,
+          rotateAlways: false,
+          hideOverlappingLabels: true,
+          showDuplicates: true,
+          datetimeFormatter: {
+            year: 'yyyy',
+            month: "MMM 'yy",
+            day: 'dd MMM',
+            hour: 'HH:mm',
+            minute: 'HH:mm',
+          },
+          datetimeUTC: false,
+          trim: false,
+          minHeight: undefined,
+          maxHeight: 120,
+          style: {
+            colors: [],
+            fontSize: '12px',
+            fontFamily: 'Helvetica, Arial, sans-serif',
+            cssClass: 'apexcharts-xaxis-label',
+          },
+        },
+      },
+      yaxis: {
+        labels: {
+          formatter: function (value): string {
+            return value === null ? '?' : formatThousands(value.toString());
+          },
+        },
+        forceNiceScale: true,
+      },
+      plotOptions: {},
+      annotations: {
+        xaxis: annotations,
+      },
+      forecastDataPoints: {},
+    };
+    // @ts-expect-error: Property 'allowMouseWheelZoom' does not exist on type 'Zoom'
+    this.mightPerHourChart.chart.zoom.allowMouseWheelZoom = false;
+  }
+
+  private initRadarChart(
+    chartKey: keyof typeof ApiPlayerStatsType,
+    categories: string[],
+    series: { name: string; data: number[] },
+    logBase = 10,
+  ): void {
+    this.radarCharts[chartKey] = {
+      series: [
+        {
+          name: series.name,
+          data: series.data,
+        },
+      ],
+      chart: {
+        height: ChartTypeHeights.LARGE,
+        type: 'radar',
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+      },
+      colors: ['#09753e', '#333333'],
+      fill: {},
+      dataLabels: {},
+      stroke: {},
+      legend: {},
+      grid: {},
+      title: {},
+      tooltip: {},
+      xaxis: {
+        categories: categories,
+        labels: {
+          show: true,
+          style: {
+            colors: ['#a8a8a8'],
+            fontSize: '9.5px',
+            fontFamily: 'Arial, sans-serif',
+          },
+          offsetY: 0,
+          rotateAlways: true,
+          rotate: 45,
+        },
+      },
+      yaxis: {
+        logarithmic: true,
+        min: 0,
+        forceNiceScale: true,
+        logBase: logBase,
+        labels: {
+          formatter: function (value): string {
+            return value === 0 ? '?' : formatThousands(value.toString());
+          },
+        },
+      },
+      annotations: {},
+      forecastDataPoints: {},
+      markers: {},
+      plotOptions: {
+        radar: {
+          polygons: {
+            fill: {
+              colors: ['#f8f8f8', '#fff'],
+            },
+          },
+        },
+      },
+    };
+  }
+
+  private initParticipationRateChart(
+    chartKey: keyof typeof ApiPlayerStatsType,
+    data: number[],
+    totalPlayers: number,
+  ): void {
+    this.participationRateCharts[chartKey] = {
+      // @ts-expect-error: Property 'series' does not exist on type 'ApexOptions'
+      series: data,
+      chart: {
+        type: 'donut',
+        height: ChartTypeHeights.DEFAULT,
+        animations: {
+          enabled: false,
+        },
+        toolbar: {
+          show: true,
+        },
+        locales: this.rankingService.CHART_LOCALES,
+        defaultLocale: this.languageService.getCurrentLang(),
+      },
+      colors: ['#4d7a35', '#cdb98f'],
+      fill: {
+        type: 'solid',
+      },
+      labels: [this.translateService.instant('Participation'), this.translateService.instant('Non-participation')],
+      dataLabels: {
+        enabled: false,
+      },
+      stroke: {
+        width: 3,
+        colors: ['#f2e8d0'],
+      },
+      plotOptions: {
+        pie: {
+          donut: {
+            size: '68%',
+            labels: {
+              show: true,
+              value: {
+                color: '#3b2a14',
+                fontSize: '28px',
+                fontWeight: 700,
+                formatter: (value): string => `${Math.round(Number(value))}%`,
+              },
+              total: {
+                show: true,
+                showAlways: true,
+                label: this.translateService.instant('Participation'),
+                color: '#6b5533',
+                formatter: (context): string => `${Math.round(context.globals.series[0])}%`,
+              },
+            },
+          },
+        },
+      },
+      legend: {
+        position: 'bottom',
+        formatter: (value, options): string => {
+          return (
+            value +
+            ':' +
+            Math.round((totalPlayers * options.w.globals.series[options.seriesIndex]) / 100) +
+            ' ' +
+            this.translateService.instant('Membres').toLowerCase() +
+            ' (' +
+            Math.round(options.w.globals.series[options.seriesIndex]) +
+            '%)'
+          );
+        },
+      },
+      grid: {
+        row: {
+          colors: ['#f3f3f3', 'transparent'],
+          opacity: 0.5,
+        },
+      },
+      title: {},
+      tooltip: {},
+      xaxis: {},
+      yaxis: {},
+      annotations: {},
+      forecastDataPoints: {},
+      markers: {},
+    };
+  }
+
+  private mapPlayersFromApi(players: ApiPlayerSearchResponse[]): Player[] {
+    return players.map((player, index) => {
+      return {
+        rank: index + 1,
+        playerId: player.player_id,
+        playerName: player.player_name,
+        allianceName: player.alliance_name,
+        allianceId: player.alliance_id,
+        allianceRank: player.alliance_rank,
+        mightCurrent: player.might_current,
+        mightAllTime: player.might_all_time,
+        lootCurrent: player.loot_current,
+        lootAllTime: player.loot_all_time,
+        honor: player.honor,
+        maxHonor: player.max_honor,
+        currentFame: player.current_fame,
+        highestFame: player.highest_fame,
+        remainingRelocationTime: player.remaining_relocation_time,
+        isFavorite: this.followService.isFollowingPlayer(player.player_id),
+        peaceDisabledAt: player.peace_disabled_at,
+        updatedAt: player.updated_at,
+        level: player.level,
+        distance: player.calculated_distance,
+        legendaryLevel: player.legendary_level,
+      };
+    });
+  }
+
+  private async loadDetailsEventPlayerStats(): Promise<void> {
+    let playersData: ApiPlayerStatsForAlliance;
+    this.countQueryFinished = 0;
+    this.totalQuery = 1;
+    try {
+      const response = await this.apiRestService.getPlayersStatsByAllianceId(this.allianceId);
+      this.countQueryFinished++;
+      this.cdr.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (response.success === false) {
+        this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+        return;
+      }
+      playersData = response.data.points;
+      this.lootReset = lootResetOf(response.data.lootReset, response.data.timezoneOffset);
+    } catch {
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 20_000);
+      return;
+    }
+    this.data = playersData;
+    this.initMightHistoryData(playersData);
+    this.initLootHistoryData(playersData);
+    this.initBloodcrowData(playersData);
+    this.initWarRealmsData(playersData);
+    this.initNomadData(playersData);
+    this.initSamuraiData(playersData);
+    this.initBerimondKingdomData(playersData);
+  }
+
+  private initLedgers(server: ApiServerStats | null): void {
+    const count = this.players.length;
+    if (count === 0) {
+      this.ledgers = [];
+      return;
+    }
+    const totalMight = this.sumOf((player) => player.mightCurrent);
+    const totalLoot = this.sumOf((player) => player.lootCurrent);
+    const totalHonor = this.sumOf((player) => player.honor);
+    const totalFame = this.sumOf((player) => player.currentFame);
+    const averageLevel =
+      this.sumOf((player) => (Number(player.level) || 0) + (Number(player.legendaryLevel) || 0)) / count;
+    const now = Date.now();
+    const inProtection = this.players.filter(
+      (player) => player.peaceDisabledAt && new Date(player.peaceDisabledAt).getTime() > now,
+    ).length;
+    const topMight = this.holderOf((player) => player.mightCurrent);
+    const topLoot = this.holderOf((player) => player.lootCurrent);
+    const topFame = this.holderOf((player) => player.currentFame);
+
+    this.ledgers = [
+      {
+        titleKey: 'Puissance',
+        icon: 'assets/pp3.png',
+        rows: [
+          this.averageRow(totalMight / count, server?.avg_might),
+          this.holderRow(topMight),
+          { labelKey: 'Total', value: this.customFormatter(totalMight, 0) },
+        ],
+      },
+      {
+        titleKey: 'Pillage hebdomadaire',
+        icon: 'assets/loot4.png',
+        rows: [
+          this.averageRow(totalLoot / count, server?.avg_loot),
+          this.holderRow(topLoot),
+          {
+            labelKey: 'Total',
+            value: this.customFormatter(totalLoot, 0),
+            detail: server?.total_loot
+              ? { value: this.formatAvg((totalLoot / server.total_loot) * 100, 2), suffixKey: '% du total' }
+              : undefined,
+          },
+        ],
+      },
+      {
+        titleKey: 'Honneur',
+        icon: 'assets/honor2.png',
+        rows: [
+          this.averageRow(totalHonor / count, server?.avg_honor),
+          { labelKey: 'Total', value: this.customFormatter(totalHonor, 0) },
+        ],
+      },
+      {
+        titleKey: 'Points de gloire',
+        icon: 'assets/glory.png',
+        rows: [this.holderRow(topFame), { labelKey: 'Total', value: this.customFormatter(totalFame, 0) }],
+      },
+      {
+        titleKey: 'Membres',
+        icon: 'assets/players.png',
+        rows: [
+          { labelKey: 'Nombre de joueurs', value: String(count) },
+          {
+            labelKey: 'Niveau moyen',
+            value: this.formatLevel(averageLevel),
+            detail: server
+              ? {
+                  prefixKey: 'Moy. globale',
+                  value: this.formatLevel(server.avg_level),
+                  trend: this.trendOf(averageLevel, server.avg_level),
+                }
+              : undefined,
+          },
+          {
+            labelKey: 'En protection',
+            value: String(inProtection),
+            detail: { value: `${this.formatAvg((inProtection / count) * 100, 1)} %` },
+          },
+        ],
+      },
+    ];
+  }
+
+  private sumOf(read: (player: Player) => number): number {
+    return this.players.reduce((accumulator, player) => accumulator + (read(player) || 0), 0);
+  }
+
+  private holderOf(read: (player: Player) => number): { value: number; name: string } {
+    const holder = this.players.reduce<Player | null>(
+      (best, player) => (best === null || read(player) > read(best) ? player : best),
+      null,
+    );
+    return { value: holder ? read(holder) : 0, name: holder?.playerName ?? '-' };
+  }
+
+  private averageRow(average: number, serverAverage: number | undefined): StatLedgerRow {
+    return {
+      labelKey: 'Moyenne',
+      value: this.customFormatter(average, 0),
+      detail:
+        serverAverage === undefined
+          ? undefined
+          : {
+              prefixKey: 'Moy. globale',
+              value: this.formatAvg(serverAverage, 0),
+              trend: this.trendOf(average, serverAverage),
+            },
+    };
+  }
+
+  private holderRow(holder: { value: number; name: string }): StatLedgerRow {
+    return { labelKey: 'Maximum', value: this.customFormatter(holder.value, 0), detail: { value: holder.name } };
+  }
+
+  private trendOf(value: number, reference: number): StatTrend {
+    if (value > reference) return 'up';
+    return value < reference ? 'down' : null;
+  }
+
+  private formatLevel(level: number): string {
+    return level > 70 ? '70/' + this.customFormatter(level - 70, 0) : this.customFormatter(level, 0);
+  }
+
+  private buildDescriptionHistory(history: ApiAllianceDescriptionHistory[] | undefined): DescriptionChange[] {
+    const decoder = new DecodeHtmlPipe();
+
+    return (history ?? []).map((entry) => {
+      const previousTokens = this.tokenizeDescription(decoder.transform(entry.old_description));
+      const currentTokens = this.tokenizeDescription(decoder.transform(entry.new_description));
+      const { previousSegments, currentSegments } = this.diffDescriptions(previousTokens, currentTokens);
+      return {
+        createdAt: entry.created_at,
+        previousHtml: this.renderSegments(previousSegments, 'description-removed'),
+        currentHtml: this.renderSegments(currentSegments, 'description-added'),
+      };
+    });
+  }
+
+  private tokenizeDescription(description: string): string[] {
+    const tokens: string[] = [];
+    let word = '';
+    const flushWord = (): void => {
+      if (word.length > 0) tokens.push(word);
+      word = '';
+    };
+    for (let index = 0; index < description.length;) {
+      const character = description[index];
+      const tagEnd = character === '<' ? description.indexOf('>', index) : -1;
+      if (tagEnd !== -1) {
+        flushWord();
+        tokens.push(description.slice(index, tagEnd + 1));
+        index = tagEnd + 1;
+      } else if (WHITESPACE.test(character)) {
+        flushWord();
+        let end = index;
+        while (end < description.length && WHITESPACE.test(description[end])) end++;
+        tokens.push(description.slice(index, end));
+        index = end;
+      } else {
+        word += character;
+        index++;
+      }
+    }
+    flushWord();
+    return tokens;
+  }
+
+  private renderSegments(segments: DescriptionSegment[], highlightClass: string): string {
+    return segments
+      .map((segment) => {
+        const text = GameDescriptionPipe.toSafeHtml(segment.text);
+        return segment.changed ? `<span class="${highlightClass}">${text}</span>` : text;
+      })
+      .join('');
+  }
+
+  private diffDescriptions(
+    previousTokens: string[],
+    currentTokens: string[],
+  ): { previousSegments: DescriptionSegment[]; currentSegments: DescriptionSegment[] } {
+    const previousSegments: DescriptionSegment[] = [];
+    const currentSegments: DescriptionSegment[] = [];
+    const previousLength = previousTokens.length;
+    const currentLength = currentTokens.length;
+    if (previousLength > DESCRIPTION_DIFF_MAX_TOKENS || currentLength > DESCRIPTION_DIFF_MAX_TOKENS) {
+      for (const token of previousTokens) this.pushSegment(previousSegments, token, false);
+      for (const token of currentTokens) this.pushSegment(currentSegments, token, false);
+      return { previousSegments, currentSegments };
+    }
+    const width = currentLength + 1;
+    const lcs = this.buildLcsTable(previousTokens, currentTokens);
+
+    let previousIndex = 0;
+    let currentIndex = 0;
+    while (previousIndex < previousLength && currentIndex < currentLength) {
+      if (previousTokens[previousIndex] === currentTokens[currentIndex]) {
+        this.pushSegment(previousSegments, previousTokens[previousIndex++], false);
+        this.pushSegment(currentSegments, currentTokens[currentIndex++], false);
+      } else if (lcs[(previousIndex + 1) * width + currentIndex] >= lcs[previousIndex * width + currentIndex + 1]) {
+        this.pushSegment(previousSegments, previousTokens[previousIndex++], true);
+      } else {
+        this.pushSegment(currentSegments, currentTokens[currentIndex++], true);
+      }
+    }
+    while (previousIndex < previousLength) {
+      this.pushSegment(previousSegments, previousTokens[previousIndex++], true);
+    }
+    while (currentIndex < currentLength) {
+      this.pushSegment(currentSegments, currentTokens[currentIndex++], true);
+    }
+
+    return { previousSegments, currentSegments };
+  }
+
+  private chartStoreFor(tab: ChartTypes | null): Record<keyof typeof ApiPlayerStatsType, ChartOptions | undefined> {
+    if (tab === ChartTypes.PARTICIPATION_RATE) return this.participationRateCharts;
+    if (tab === ChartTypes.RADAR) return this.radarCharts;
+    return this.charts;
+  }
+
+  private resetChartSize(chart: ChartOptions | undefined, height: ChartTypeHeights): void {
+    if (!chart) return;
+    chart.chart.height = height;
+    chart.chart.width = undefined;
+  }
+
+  private buildLcsTable(previousTokens: string[], currentTokens: string[]): Int32Array {
+    const previousLength = previousTokens.length;
+    const currentLength = currentTokens.length;
+    const width = currentLength + 1;
+    const lcs = new Int32Array((previousLength + 1) * width);
+    for (let previousIndex = previousLength - 1; previousIndex >= 0; previousIndex--) {
+      for (let currentIndex = currentLength - 1; currentIndex >= 0; currentIndex--) {
+        lcs[previousIndex * width + currentIndex] =
+          previousTokens[previousIndex] === currentTokens[currentIndex]
+            ? lcs[(previousIndex + 1) * width + currentIndex + 1] + 1
+            : Math.max(lcs[(previousIndex + 1) * width + currentIndex], lcs[previousIndex * width + currentIndex + 1]);
+      }
+    }
+    return lcs;
+  }
+
+  private pushSegment(segments: DescriptionSegment[], text: string, changed: boolean): void {
+    const isChanged = changed && text.trim() !== '' && !/^<[^>]*>$/.test(text);
+    const previous = segments.at(-1);
+    if (previous?.changed === isChanged) {
+      previous.text += text;
+      return;
+    }
+    segments.push({ text, changed: isChanged });
+  }
+}

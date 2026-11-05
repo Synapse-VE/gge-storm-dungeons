@@ -1,0 +1,397 @@
+<div class="container my-3 dungeons">
+  <div class="row">
+    <div class="col-12" [ngClass]="{'loading': isInLoading}">
+      <div class="search container-fluid mb-2">
+        <div class="dungeon-header-row mb-2">
+          <div class="dungeon-realm-chips" [attr.role]="view === 'map' ? 'radiogroup' : 'group'"
+            [attr.aria-label]="'Royaume' | translate">
+            @for (realm of dungeonRealms; track realm.id) {
+            @if (view === 'map') {
+            <button type="button" class="dungeon-realm-chip" role="radio" [attr.aria-checked]="realm.id === mapRealmId"
+              [class.is-on]="realm.id === mapRealmId" [title]="realm.name | translate" (click)="selectMapRealm(realm.id)">
+              <img [src]="realm.icon" alt="" width="30" height="30">
+              <span>{{ realm.name | translate }}</span>
+            </button>
+            } @else {
+            <button type="button" class="dungeon-realm-chip" [attr.aria-pressed]="isListRealmSelected(realm.id)"
+              [class.is-on]="isListRealmSelected(realm.id)" [title]="realm.name | translate"
+              (click)="toggleListRealm(realm.id)">
+              <img [src]="realm.icon" alt="" width="30" height="30">
+              <span>{{ realm.name | translate }}</span>
+            </button>
+            }
+            }
+          </div>
+          <app-view-switch [view]="view" (viewChange)="setView($event)" />
+        </div>
+        @if (view === 'list') {
+        <div class="dungeon-toolbar">
+          <div class="dungeon-toolbar__search">
+            <app-search-bar [attrListInput]="[]" [searchInput]="filterByPlayerName"
+              (searchEmitter)="filterByPlayerName = $event" [inputType]="'string'" [name]="'player-name'"
+              [placeholderInput]="'Nom du joueur' | translate" [hasContent]="true">
+              {{ 'Pseudonyme' | translate }}
+            </app-search-bar>
+            <button class="dungeon-icon-btn dungeon-icon-btn--accent" [title]="'Rechercher' | translate"
+              [attr.aria-label]="'Rechercher' | translate" (click)="onPlayerNameChange(filterByPlayerName!)">
+              <lucide-icon class="lucide" [img]="Search"></lucide-icon>
+            </button>
+            <button class="dungeon-icon-btn" [title]="'Réinitialiser' | translate"
+              [attr.aria-label]="'Réinitialiser' | translate" (click)="resetPlayerName()">
+              <lucide-icon class="lucide" [img]="X"></lucide-icon>
+            </button>
+            <button class="dungeon-icon-btn" data-bs-toggle="modal" data-bs-target="#questionModal"
+              [title]="'Aide' | translate" [attr.aria-label]="'Aide' | translate">
+              <lucide-icon class="lucide" [img]="MessageCircleQuestionMark"></lucide-icon>
+            </button>
+          </div>
+          <div class="dungeon-toolbar__group">
+            @if (displayedStates && displayedStates.length > 0) {
+            <div class="dungeon-toolbar__select">
+              <app-select [items]="displayedStates" [name]="'dungeon-state'"
+                [selectedItem]="filterByAttackCooldown ? filterByAttackCooldown.toString() : '0'"
+                (selectEmitter)="changeState($event)"></app-select>
+            </div>
+            }
+            <button class="dungeon-btn" data-bs-toggle="modal" data-bs-target="#sortModal"
+              [attr.aria-label]="'Trier' | translate">
+              <i class="fa-solid fa-arrow-down-short-wide"></i>
+              <span>{{ 'Trier' | translate }}</span>
+              @if (activeSortCount > 0) {
+              <span class="dungeon-count">{{ activeSortCount }}</span>
+              }
+            </button>
+            <button class="dungeon-btn" data-bs-toggle="modal" data-bs-target="#pagingModal"
+              [attr.aria-label]="'Pagination' | translate">
+              <i class="fa-solid fa-list-ol"></i>
+              <span>{{ 'Pagination' | translate }}</span>
+            </button>
+            <button class="dungeon-icon-btn" [title]="'Actualiser' | translate" [attr.aria-label]="'Actualiser' | translate"
+              (click)="refresh()">
+              <i class="fa-solid fa-arrows-rotate" [ngClass]="{'fa-spin': refreshDataAnimationSpinner}"></i>
+            </button>
+          </div>
+        </div>
+        }
+        @if (serverService.currentServer && !allowedServers.includes(serverService.currentServer.name)) {
+        <div class="row my-2 special-bg">
+          <div class="col-12">
+            <i class="fa-solid fa-info-circle text-muted me-1"></i>
+            <span class="text-black">
+              <em>{{ 'server-not-available' | translate: { server: (serverService.currentServer.name) } }}</em>
+            </span>
+          </div>
+        </div>
+        }
+        @if (view === 'list' && dungeonsMeta && dungeonsMeta.last_scan_at) {
+        <div class="dungeons-status">
+          <i class="fa-solid fa-satellite-dish"></i>
+          <span>{{ 'Dernier scan' | translate }} : {{ dungeonsMeta.last_scan_at | date:'short' }}</span>
+        </div>
+        }
+        @if (view === 'map') {
+          @if (isServerAllowed) {
+          <app-dungeon-map class="d-block mt-2" [kingdomId]="mapRealmId" [originPlayerName]="nearPlayerName"
+            [originX]="positionX" [originY]="positionY" [focusTarget]="mapFocus"
+            [lastScanAt]="dungeonsMeta?.last_scan_at ?? null" (originChange)="onMapOriginChange($event)"
+            (attackHistoryRequested)="openAttackHistory($event)" />
+          }
+        } @else {
+        <div class="flex flex-col justify-between gap-6 mt-2">
+          <app-table [sort]="''" [reverse]="false" [isInLoading]="isInLoading" [maxPage]="maxPage!" [page]="page"
+            [search]="''" [headers]="headers" (navigateToPage)="navigateTo($event)" (previousPage)="previousPage()"
+            (nextPage)="nextPage()">
+            @if (dungeons.length === 0 && !isInLoading) {
+            <tr>
+              <td colspan="10" class="no-data">{{ 'Aucun résultat' | translate }}</td>
+            </tr>
+            }
+            @for (dungeon of dungeons; track dungeon) {
+            <tr [ngClass]="{'table-custom': isInCooldown(dungeon)}">
+              <td class="col-rank">
+                <span class="mobile-only">#</span>
+                {{ dungeon.rank }}
+              </td>
+              @if (showRealm) {
+              <td class="col-name">
+                <div class="d-flex align-items-center justify-content-center">
+                  <div>
+                    <img [src]="dungeon.image" alt="{{ dungeon.kid }}" class="img-fluid" width="30">
+                  </div>
+                  <span class="ms-2 dungeon-{{ dungeon.kid }}">{{ getRealmName(dungeon.kid) | translate }}</span>
+                </div>
+              </td>
+              }
+              <td class="col-stat col-position">
+                <span class="cell-label">{{ 'Position' | translate }}</span><span class="text-nowrap">{{ dungeon.position }}
+                  <button type="button" class="dungeon-map-link" [title]="'Voir sur la carte' | translate"
+                    [attr.aria-label]="'Voir sur la carte' | translate" (click)="showOnMap(dungeon)">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                  </button>
+                </span>
+              </td>
+              @if (showDistance) {
+              <td class="col-stat">
+                <span class="cell-label">{{ 'Distance' | translate }}</span>
+                {{ dungeon.distance ? dungeon.distance + 'm' : '?' }}
+              </td>
+              }
+              <td class="col-state-wide">
+                @if (!isInCooldown(dungeon)) {
+                <i class="fa-solid fa-dungeon special-fa"></i>
+                }
+                <span class="dungeon-state">{{ dungeon | cooldown }}</span>
+                @if (dungeon.availabilityAnimDelay) {
+                <div class="dungeon-avail-progress">
+                  <div class="dungeon-avail-fill"
+                    [class.dungeon-avail-fill--exceeded]="dungeon.availabilityExceeded"
+                    [style.animation-duration]="dungeon.availableDurationSeconds + 's'"
+                    [style.animation-delay]="dungeon.availabilityAnimDelay">
+                  </div>
+                </div>
+                }
+              </td>
+              <td class="col-stat">
+                <span class="cell-label">{{ 'Attaqué par' | translate }}</span>
+                @if (isInCooldown(dungeon)) {
+                <span>
+                  {{ dungeon.playerName }}
+                  <button type="button" class="pointer modal-info button-reset"
+                    [title]="'Cliquez pour plus d\'informations' | translate"
+                    (click)="getDungeonsByPlayerId(dungeon)"
+                    data-bs-toggle="modal"
+                    data-bs-target="#dungeonHistoryModal">
+                    <i class="fa-solid fa-history ms-1" aria-hidden="true"></i>
+                  </button>
+                </span>
+                } @else {
+                -
+                }
+              </td>
+              <td class="col-stat">
+                <span class="cell-label">{{ 'Durée de disponibilité' | translate }}</span>
+                @if (dungeon.availableDurationSeconds !== undefined) {
+                <span>{{ dungeon.availableDurationSeconds | duration }}</span>
+                } @else {
+                -
+                }
+              </td>
+            </tr>
+            }
+          </app-table>
+        </div>
+        }
+      </div>
+    </div>
+
+
+    <div class="modal fade" id="sortModal" tabindex="-1" aria-labelledby="sortModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="sortModalLabel">
+              <i class="fa-solid fa-arrow-down-short-wide"></i>&nbsp;{{ 'Trier les résultats' | translate }}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"
+              [attr.aria-label]="'Fermer' | translate"></button>
+          </div>
+          <div class="modal-body d-flex flex-column gap-3">
+            <app-modal-form-group [label]="'Plus proche d\'une position' | translate">
+              <span field prefix>X</span>
+              <input field type="number" [(ngModel)]="positionX" [placeholder]="'Position X' | translate"  [attr.aria-label]="'Position X' | translate"/>
+              <span field prefix>Y</span>
+              <input field type="number" [(ngModel)]="positionY" [placeholder]="'Position Y' | translate"  [attr.aria-label]="'Position Y' | translate"/>
+              <button action search data-bs-dismiss="modal" (click)="onPositionChange(positionX, positionY)">
+                {{ 'Rechercher' | translate }}
+              </button>
+              <button action reset data-bs-dismiss="modal" (click)="resetPosition()">
+                {{ 'Réinitialiser' | translate }}
+              </button>
+            </app-modal-form-group>
+
+            <app-modal-form-group [label]="'Plus proche d\'un joueur' | translate">
+              <span field prefix>{{ 'Joueur' | translate }}</span>
+              <input field type="text" [(ngModel)]="nearPlayerName" [placeholder]="'Nom du joueur' | translate"  [attr.aria-label]="'Nom du joueur' | translate"/>
+              <button action search data-bs-dismiss="modal" (click)="onPositionChangePlayerName(nearPlayerName)">
+                {{ 'Rechercher' | translate }}
+              </button>
+              <button action reset data-bs-dismiss="modal" (click)="resetPositionPlayerName()">
+                {{ 'Réinitialiser' | translate }}
+              </button>
+            </app-modal-form-group>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal fade" id="pagingModal" tabindex="-1" aria-labelledby="pagingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="pagingModalLabel">
+            <i class="fa-solid fa-list-ol"></i>&nbsp;{{ 'Pagination' | translate }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+            [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <app-modal-form-group [label]="'Nombre de résultats par page' | translate">
+            <input field type="number" [(ngModel)]="pageSize"
+              [placeholder]="'Nombre de résultats' | translate" min="0"  [attr.aria-label]="'Nombre de résultats' | translate"/>
+            <button action search data-bs-dismiss="modal" (click)="onPageSizeChange(pageSize)">
+              {{ 'Rechercher' | translate }}
+            </button>
+            <button action reset data-bs-dismiss="modal" (click)="resetPageSize()">
+              {{ 'Réinitialiser' | translate }}
+            </button>
+          </app-modal-form-group>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="modal fade" id="rankingModal" tabindex="-1" aria-labelledby="rankingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="rankingModalLabel">
+            <i class="fa-solid fa-filter"></i>&nbsp;{{ 'Filtrer les résultats' | translate }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+            [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="questionModal" tabindex="-1" aria-labelledby="questionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="questionModalLabel">
+            <i class="fa-solid fa-question"></i>&nbsp;{{ 'Aide' | translate }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+            [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          {{ 'help-dungeon' | translate }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="dungeonHistoryModal" tabindex="-1" aria-labelledby="dungeonHistoryModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="dungeonHistoryModalLabel">
+            <i class="fa-solid fa-clock-rotate-left"></i>&nbsp;{{ 'Historique des attaques' | translate }}
+            ({{ selectedPlayerName }})
+            - {{ 'Forteresses' | translate }}
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+            [attr.aria-label]="'Fermer' | translate"></button>
+        </div>
+        <div class="modal-body">
+          <ul class="nav nav-tabs mb-3">
+            <li class="nav-item">
+              <button class="nav-link" [class.active]="activeTab === 'list'" (click)="activeTab = 'list'">
+                <i class="fa-solid fa-list me-1"></i>{{ 'Données' | translate }}
+              </button>
+            </li>
+            <li class="nav-item">
+              <button class="nav-link" [class.active]="activeTab === 'graph'" (click)="activeTab = 'graph'">
+                <i class="fa-solid fa-chart-line me-1"></i>{{ 'Graphique' | translate }}
+              </button>
+            </li>
+          </ul>
+          @if (activeTab === 'list') {
+            <app-modal-table
+              [items]="playerDungeonAttackHistory"
+              [columns]="dungeonHistoryColumns"
+              [rowTemplate]="dungeonHistoryRow"
+              [searchFilter]="dungeonHistorySearchFilter"
+              [resetKey]="selectedPlayerName"
+              defaultSortColumn="attacked_at"
+            />
+          }
+          @if (activeTab === 'graph') {
+            <div class="row g-3 mb-4">
+              <div class="col-4">
+                <div class="attack-stat-card">
+                  <div class="attack-stat-value">{{ attackStats.last24h }}</div>
+                  <div class="attack-stat-label">{{ 'Dernières 24h' | translate }}</div>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="attack-stat-card">
+                  <div class="attack-stat-value">{{ attackStats.last7d }}</div>
+                  <div class="attack-stat-label">{{ 'Derniers 7 jours' | translate }}</div>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="attack-stat-card">
+                  <div class="attack-stat-value">{{ attackStats.last30d }}</div>
+                  <div class="attack-stat-label">{{ 'Derniers 30 jours' | translate }}</div>
+                </div>
+              </div>
+            </div>
+            @if (attackChart && isBrowser) {
+              <div class="mb-3">
+                <app-charts-wrapper
+                  [series]="attackChart.series!"
+                  [chart]="attackChart.chart"
+                  [xaxis]="attackChart.xaxis!"
+                  [yaxis]="attackChart.yaxis!"
+                  [stroke]="attackChart.stroke!"
+                  [colors]="attackChart.colors!"
+                  [markers]="attackChart.markers!"
+                  [tooltip]="attackChart.tooltip!"
+                  [grid]="attackChart.grid!"
+                />
+              </div>
+            }
+            @if (attacksPerDayChart && isBrowser) {
+              <app-charts-wrapper
+                [series]="attacksPerDayChart.series!"
+                [chart]="attacksPerDayChart.chart"
+                [xaxis]="attacksPerDayChart.xaxis!"
+                [yaxis]="attacksPerDayChart.yaxis!"
+                [plotOptions]="attacksPerDayChart.plotOptions!"
+                [colors]="attacksPerDayChart.colors!"
+                [dataLabels]="attacksPerDayChart.dataLabels!"
+                [tooltip]="attacksPerDayChart.tooltip!"
+                [grid]="attacksPerDayChart.grid!"
+              />
+            }
+            @if (!attackChart && !isInLoading) {
+              <p class="text-muted text-center py-4">{{ 'Aucune cible à attaquer n\'a été trouvée' | translate }}</p>
+            }
+          }
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<ng-template #dungeonHistoryRow let-attack>
+  <tr>
+    <td>
+      <div class="d-flex justify-content-center">
+        <img [src]="attack.image" alt="{{ attack.kid }}" class="img-fluid" width="30" />
+        <span class="ms-2 dungeon-{{ attack.kid }}">{{ getRealmName(attack.kid) | translate }}</span>
+      </div>
+    </td>
+    <td>{{ attack.position_x }}:{{ attack.position_y }}</td>
+    <td>{{ attack.attacked_at | date:'short' }}</td>
+  </tr>
+</ng-template>

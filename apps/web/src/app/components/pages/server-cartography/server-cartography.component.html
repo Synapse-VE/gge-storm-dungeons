@@ -1,0 +1,381 @@
+<ng-template #legend>
+  <section class="legend-panel" [attr.aria-label]="'Légende' | translate">
+    <header class="legend-header">
+      <h2 class="legend-title">{{ 'Légende' | translate }}</h2>
+      <button type="button" class="legend-settings-btn" data-bs-toggle="modal" data-bs-target="#parametersModal">
+        <i class="fa-solid fa-sliders"></i>
+        <span>{{ 'Paramètres' | translate }}</span>
+      </button>
+    </header>
+    <ul class="legend-items">
+      @for (legend of legends; track legend.name) {
+      <li class="legend-item" [class.is-hidden]="isPlayerHidden(legend.name)">
+        <label class="legend-swatch" [style.background-color]="legend.color"
+          [title]="legend.name === '1' ? ('Sans alliance' | translate) : legend.name">
+          <input type="color" [value]="rgbToHex(legend.color)" (change)="changeItemColor(legend.name, $event.target)"
+            [attr.aria-label]="legend.name === '1' ? ('Sans alliance' | translate) : legend.name">
+        </label>
+        <button type="button" class="legend-toggle button-reset" (click)="toggleLegendItem(legend.name)"
+          [attr.aria-pressed]="!isPlayerHidden(legend.name)">
+          <span class="legend-name">{{ legend.name === '1' ? ('Sans alliance' | translate) : legend.name }}</span>
+          <span class="legend-detail">{{ legend.detail }}</span>
+          <i class="legend-eye fa-solid" [class.fa-eye]="!isPlayerHidden(legend.name)"
+            [class.fa-eye-slash]="isPlayerHidden(legend.name)"></i>
+        </button>
+      </li>
+      }
+    </ul>
+    <div class="legend-section">
+      <div class="legend-section-head">
+        <h3>{{ 'Puissance' | translate }}</h3>
+        <span>{{ 'Joueurs' | translate }}</span>
+      </div>
+      <ul class="tier-list">
+        @for (tier of powerTiers; track $index) {
+        <li>
+          <button type="button" class="tier-row button-reset" [class.is-hidden]="hiddenTiers.has($index)"
+            [attr.aria-pressed]="!hiddenTiers.has($index)" [disabled]="tier.players === 0"
+            (click)="toggleTier($index)">
+            <span class="tier-glyph"><span class="glyph glyph-castle" [style.width.px]="tier.radius * 2"
+                [style.height.px]="tier.radius * 2"></span></span>
+            <span class="tier-range">≥ {{ tier.minMight | formatNumber }}</span>
+            <span class="tier-count">{{ tier.players }}</span>
+          </button>
+        </li>
+        }
+      </ul>
+    </div>
+    <div class="legend-section">
+      <ul class="tier-list">
+        <li>
+          <button type="button" class="tier-row button-reset" [class.is-hidden]="!isTypeVisible('castle')"
+            [attr.aria-pressed]="isTypeVisible('castle')" (click)="toggleType('castle')">
+            <span class="tier-glyph"><span class="glyph glyph-castle" style="width: 10px; height: 10px"></span></span>
+            <span class="tier-range">{{ 'Chateau principal' | translate }}</span>
+            <span class="tier-count">{{ quantity.castle }}</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" class="tier-row button-reset" [class.is-hidden]="!isTypeVisible('outpost')"
+            [attr.aria-pressed]="isTypeVisible('outpost')" (click)="toggleType('outpost')">
+            <span class="tier-glyph"><span class="glyph glyph-outpost"></span></span>
+            <span class="tier-range">{{ 'Avant-poste' | translate }}</span>
+            <span class="tier-count">{{ quantity.outpost }}</span>
+          </button>
+        </li>
+        <li class="tier-split">
+          <button type="button" class="tier-row button-reset" [class.is-hidden]="!isTypeVisible('building')"
+            [attr.aria-pressed]="isTypeVisible('building')" (click)="toggleType('building')">
+            <span class="tier-glyph"><span class="glyph glyph-building"></span></span>
+            <span class="tier-range">{{ 'Patrimoine d\'alliance' | translate }}</span>
+            <span class="tier-count">{{ quantity.patriarch }}</span>
+          </button>
+          <button type="button" class="tier-more button-reset" data-bs-toggle="modal" data-bs-target="#patriarchModal"
+            [title]="'Afficher les détails' | translate" [attr.aria-label]="'Afficher les détails' | translate">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </li>
+      </ul>
+    </div>
+  </section>
+</ng-template>
+<app-layered-scene scene="cartography" class="cartography-scene" />
+<div class="container-fluid mt-3 cartography">
+  <header class="carto-hero">
+    <h1>{{ 'Cartographie' | translate }}</h1>
+  </header>
+  <ul class="nav nav-tabs pt-3 ps-3 border-0 no-wrap">
+    <li class="nav-item">
+      <button class="nav-link" (click)="selectedTab = 'strategic'"
+        [ngClass]="selectedTab === 'strategic' ? 'active' : ''">
+        <img src="/assets/map.webp" width="24" alt=""> <span class="ms-1">{{ 'Vue stratégique' |
+          translate }} (<b id="results">{{ watchModeAlliance
+            === 'one' ? nbPlayers : loadedAlliancesQuantity === -1 ? ('Chargement du nombre d\'alliances...' |
+            translate) :
+            loadedAlliancesQuantity + ' ' + ('alliances' | translate) }}</b>)</span>
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" (click)="selectedTab = 'density'" [ngClass]="selectedTab === 'density' ? 'active' : ''">
+        <i class="fas fa-fire"></i> <span class="ms-1">{{ 'Carte de densité' | translate }}</span>
+      </button>
+    </li>
+  </ul>
+  <div class="bg-custom carto-body">
+    <div class="carto-layout">
+      <form class="carto-search" (ngSubmit)="submitAllianceSearch()">
+        <input type="search" name="allianceSearch" class="carto-search-input" [(ngModel)]="allianceSearch"
+          [placeholder]="'Rechercher une alliance' | translate" [attr.aria-label]="'Rechercher une alliance' | translate">
+        <button type="submit" class="carto-search-btn" [title]="'Rechercher une alliance' | translate"
+          [attr.aria-label]="'Rechercher une alliance' | translate">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </button>
+        <button type="button" class="carto-search-btn" data-bs-toggle="modal" data-bs-target="#filtersModal"
+          [title]="'Filtrer' | translate" [attr.aria-label]="'Filtrer' | translate">
+          <i class="fa-solid fa-filter"></i>
+          @if (disabledFilterCount > 0) {
+          <span class="filter-dot">{{ disabledFilterCount }}</span>
+          }
+        </button>
+      </form>
+      <div class="carto-stage" #mapStage [style.--ground]="activeWorld.ground">
+        @if (selectedWorld !== undefined) {
+        <div class="world-switch" role="group" [attr.aria-label]="'Royaume' | translate">
+          @for (world of worlds; track world.id) {
+          <button type="button" class="world-chip" [class.active]="selectedWorld === world.id"
+            [class.is-empty]="playersByWorld[world.id] === 0" [attr.aria-pressed]="selectedWorld === world.id"
+            [title]="world.name | translate" (click)="selectWorld(world.id)">
+            <img [src]="world.icon" alt="" width="22" height="22">
+            <span class="world-name">{{ world.name | translate }}</span>
+            @if (playersByWorld[world.id] !== undefined) {
+            <span class="world-count">{{ playersByWorld[world.id] }}</span>
+            }
+          </button>
+          }
+        </div>
+        }
+        <div class="stage-view" [class.d-none]="selectedTab !== 'strategic'">
+          <div id="map" class="leaflet-map"></div>
+          @if (cursorCoords) {
+          <div class="map-hud" aria-hidden="true">
+            <i class="fa-solid fa-location-crosshairs"></i> {{ cursorCoords }}
+          </div>
+          }
+        </div>
+        <div class="stage-view density-view" [class.d-none]="selectedTab !== 'density'">
+          <div class="heatmap-frame">
+            <canvas #heatmapCanvas class="heatmap-canvas" (mousemove)="onMouseMove($event)"
+              (click)="onMouseMove($event)" (mouseleave)="hideCellDetails()"></canvas>
+          </div>
+        </div>
+        <div class="stage-actions">
+          @if (selectedTab === 'strategic') {
+          <button type="button" class="stage-btn" (click)="fitWorld()" [title]="'Réinitialiser' | translate"
+            [attr.aria-label]="'Réinitialiser' | translate">
+            <i class="fa-solid fa-house"></i>
+          </button>
+          }
+          <button type="button" class="stage-btn" (click)="toggleFullscreen()"
+            [title]="(isFullscreen ? 'Fermer le plein écran' : 'Ouvrir en plein écran') | translate"
+            [attr.aria-label]="(isFullscreen ? 'Fermer le plein écran' : 'Ouvrir en plein écran') | translate">
+            <i class="fa-solid" [class.fa-maximize]="!isFullscreen" [class.fa-minimize]="isFullscreen"></i>
+          </button>
+        </div>
+      </div>
+      <aside class="carto-sidebar">
+        @if (selectedTab === 'density') {
+        <section class="density-panel">
+          <label for="resolution" class="density-label">
+            <span>{{ 'Résolution de la carte' | translate }}</span>
+            <output for="resolution">{{ resolution }}</output>
+          </label>
+          <input type="range" id="resolution" class="form-range" [(ngModel)]="resolution"
+            (ngModelChange)="generateHeatmap()" [min]="5" [max]="50" step="1">
+          <div class="density-scale">
+            <span class="density-label">{{ 'Nombre de joueurs par case' | translate }}</span>
+            <div class="legend-gradient" [style.background]="densityGradient"></div>
+            <div class="density-ticks"><span>1</span><span>{{ maxIntensity }}</span></div>
+          </div>
+        </section>
+        }
+        <ng-container *ngTemplateOutlet="legend"></ng-container>
+      </aside>
+    </div>
+    @if (tooltipVisible) {
+    <div id="tooltip" [style.top.px]="tooltipY" [style.left.px]="tooltipX">
+      <strong>{{ 'Coordonnées' | translate }} :</strong> {{ tooltipData.coords }} <br>
+      <strong>{{ 'Points de puissance' | translate }} :</strong> {{ tooltipData.pp | formatNumber }} <br>
+      <strong>{{ 'Joueurs' | translate }} ({{tooltipData.players.length}}):</strong>
+      <ul>
+        @for (player of tooltipData.players.slice(0, 5); track $index) {
+        <li>
+          <span>{{ player }}</span>
+        </li>
+        }
+        @if (tooltipData.players.length > 5) {
+        <li>
+          <span><em>{{ 'de plus' | translate: { count: tooltipData.players.length - 5 } }}</em></span>
+        </li>
+        }
+      </ul>
+    </div>
+    }
+
+    <div class="modal fade" id="patriarchModal" tabindex="-1" aria-labelledby="patriarchModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="patriarchModalLabel">{{ 'Vue d\'ensemble de l\'alliance' | translate }} ({{
+              quantity.patriarch }})
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"
+              [attr.aria-label]="'Fermer' | translate"></button>
+          </div>
+          <div class="modal-body">
+            <div class="d-flex justify-content-between monuments-quantity align-items-end">
+              <div>
+                <img src="/assets/monument.png" [alt]="'Monument' | translate" [title]="'Monument' | translate">
+                <br>
+                <span>{{ quantity.monument }}</span>
+              </div>
+              <div>
+                <img src="/assets/labo.png" [alt]="'Laboratoire' | translate" [title]="'Laboratoire' | translate">
+                <br>
+                <span>{{ quantity.laboratory }}</span>
+              </div>
+              <div>
+                <img src="/assets/tour-royale.png" [alt]="'Tour royale' | translate"
+                  [title]="'Tour royale' | translate">
+                <br>
+                <span>{{ quantity.royalTower }}</span>
+              </div>
+              <div>
+                <img src="/assets/capitale.png" [alt]="'Capitale' | translate" [title]="'Capitale' | translate">
+                <br>
+                <span>{{ quantity.capital }}</span>
+              </div>
+              <div>
+                <img src="/assets/cite-marchande.png" [alt]="'Cité marchande' | translate"
+                  [title]="'Cité marchande' | translate">
+                <br>
+                <span>{{ quantity.city }}</span>
+              </div>
+            </div>
+
+            <app-modal-table [items]="monumentsList" [columns]="monumentsColumns"
+              [rowTemplate]="patriarchMonumentsRow" [searchFilter]="monumentsSearchFilter" defaultSortColumn="type" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="filtersModal" tabindex="-1" aria-labelledby="filtersModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="filtersModalLabel">
+          <i class="fa-solid fa-filter"></i>&nbsp;{{ 'Filtrer les résultats' | translate }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+          [attr.aria-label]="'Fermer' | translate"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          @for (filter of filters; track filter) {
+          <div class="col-12 col-sm-6">
+            <app-modal-form-group [label]="filter.label | translate">
+              <span field prefix class="large">
+                <img [src]="filter.icon" [attr.alt]="filter.alt | translate" [title]="filter.title | translate">
+              </span>
+              <label field toggle [for]="filter.id" [attr.aria-label]="filter.label | translate">
+                <input type="checkbox" [(ngModel)]="formFilters[filter.model]" [id]="filter.id">
+                <span class="slider"></span>
+              </label>
+            </app-modal-form-group>
+          </div>
+          }
+          <div class="modal-actions">
+            <button type="button" class="modal-action primary" (click)="applyFilters()" data-bs-dismiss="modal">
+              <i class="fa-solid fa-check"></i>
+              <span>{{ 'Appliquer les filtres' | translate }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="parametersModal" tabindex="-1" aria-labelledby="parametersModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content shadow rounded-4 border-0">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-semibold d-flex align-items-center gap-2" id="parametersModalLabel">
+          <i class="fa-solid fa-sliders"></i> {{ 'Paramètres' | translate }}
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+          [attr.aria-label]="'Fermer' | translate"></button>
+      </div>
+      <div class="modal-body">
+        <div class="list-group list-group-flush">
+          @for (legend of legends; track legend) {
+          <div class="list-group-item d-flex justify-content-between align-items-center py-1 rounded-3 shadow-sm mb-2"
+            [style]="'background-color:'+ addTransparentToRgb(legend.color)">
+            <span class="fw-medium">{{ legend.name === '1' ? ('Sans alliance' | translate) : legend.name }}</span>
+            <div class="d-flex align-items-center gap-2">
+              <input type="color" class="form-control form-control-color p-0 shadow-none"
+                [value]="rgbToHex(legend.color)" (change)="changeItemColor(legend.name, $event.target)"
+                [attr.aria-label]="legend.name">
+              @if (watchModeAlliance !== 'one') {
+              <button class="btn btn-outline-danger btn-sm"
+                [title]="('Supprimer' | translate) + ' ' + (legend.name === '1' ? ('Sans alliance' | translate) : legend.name)"
+                (click)="removeItem(legend.name)">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+              }
+            </div>
+          </div>
+          }
+        </div>
+        <hr>
+        <h5>
+          <div class="badge-icon"><i class="fa-solid fa-plus"></i></div>
+          {{ 'Ajouter une alliance' | translate }}
+        </h5>
+        <div class="input-group px-2 mb-3">
+          <input type="text" #allianceAddName class="form-control" [placeholder]="'Ajouter une alliance' | translate" [attr.aria-label]="'Ajouter une alliance' | translate">
+          <button class="gge-btn search" type="button"
+            (click)="loadNewAlliance(allianceAddName.value); allianceAddName.value=''">
+            <i class="fas fa-search"></i>
+          </button>
+        </div>
+        <h5>
+          <div class="badge-icon"><i class="fa-solid fa-list-ol"></i></div>
+          {{ 'Nombre d\'alliances à afficher' | translate}}
+        </h5>
+        <div class="input-group px-2 mb-3">
+          <input type="number" class="form-control" min="1" [(ngModel)]="alliancesQuantity"
+            [attr.aria-label]="'Nombre d\'alliances à afficher' | translate">
+          <button class="gge-btn search" type="button" (click)="changeMapSize(false)">
+            <i class="fas fa-search"></i>
+          </button>
+        </div>
+        @if (watchModeAlliance !== 'one') {
+        <div class="text-center d-grid gap-2 mx-2">
+          <button class="btn btn-danger btn-block" (click)="changeMapSize(true)">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            {{ 'Charger toutes les alliances' | translate }}
+          </button>
+        </div>
+        }
+        @if (watchModeAlliance !== 'one') {
+        <div class="text-center d-grid gap-2 mx-2 mt-3">
+          <button class="btn btn-secondary btn-block" (click)="showUnallied ? removeItem('1') : loadNewAlliance('1')">
+            <i class="fa-solid fa-ghost"></i>
+            {{ showUnallied ? ('Masquer les joueurs sans alliance' | translate) : ('Afficher les joueurs sans alliance'
+            | translate) }}
+          </button>
+        </div>
+        }
+        @if (watchModeAlliance !== 'one') {
+        <div class="text-center d-grid gap-2 mx-2 mt-3">
+          <button class="btn btn-success btn-block" (click)="saveLink()">
+            <i class="fa-solid fa-link"></i>
+            {{ 'Sauvegarder le lien' | translate }}
+          </button>
+        </div>
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<ng-template #patriarchMonumentsRow let-monument>
+  <tr>
+    <td>{{ monument.type }}</td>
+    <td>{{ monument.position }}</td>
+    <td><span [style.color]="monument.color">{{ monument.owner }}</span></td>
+  </tr>
+</ng-template>

@@ -1,0 +1,247 @@
+import { DatePipe, isPlatformBrowser, KeyValuePipe, NgClass, NgTemplateOutlet, NgStyle } from '@angular/common';
+import {
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  inject,
+  input,
+  OnInit,
+  output,
+  PLATFORM_ID,
+  QueryList,
+  ViewChildren,
+} from '@angular/core';
+import { ChartOptions, ChartTypes, EventGenericVariation, EventStatsData } from '@ggetracker-interfaces/empire-ranking';
+import { ChartsWrapperComponent } from '@ggetracker-modules/charts-client/charts-wrapper.component';
+import { FormatNumberPipe } from '@ggetracker-pipes/format-number.pipe';
+import { TranslateModule } from '@ngx-translate/core';
+import { ApexXAxis, ChartComponent } from 'ng-apexcharts';
+import { StatsPanelComponent } from '../stats-panel/stats-panel.component';
+
+export type StatsPeriod = 'day' | 'week' | 'month' | 'year';
+
+@Component({
+  selector: 'app-player-stats-card',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    NgClass,
+    ChartsWrapperComponent,
+    DatePipe,
+    FormatNumberPipe,
+    KeyValuePipe,
+    TranslateModule,
+    NgTemplateOutlet,
+    NgStyle,
+    StatsPanelComponent,
+  ],
+  templateUrl: './player-stats-card.component.html',
+  styleUrl: './player-stats-card.component.css',
+})
+export class PlayerStatsCardComponent implements AfterViewInit, OnInit {
+  @ViewChildren('chartComp') public chartComps!: QueryList<ChartsWrapperComponent>;
+  public platformId = inject(PLATFORM_ID);
+  public isBrowser = isPlatformBrowser(this.platformId);
+  public isReady = false;
+  public title = input.required<string>();
+  public onePlayerOnly = input<boolean>(true);
+  public subtitle = input<string>();
+  public charts = input.required<Record<string, ChartOptions | null>>();
+  public data = input.required<EventGenericVariation[]>();
+  public dataName = input.required<string>();
+  public backgroundIconImage = input.required<string>();
+  public backgroundColour = input.required<string>();
+  public isWeekly = input<boolean>(false);
+  public ngContentCustom = input<boolean>();
+  public playerId = input<number>();
+  public needSpecialLoader = input<boolean>(false);
+  public eventName = input.required<string>();
+  public stats = input<EventStatsData | null>(null);
+  public readonly STATS_TAB_KEY = ChartTypes.STATS;
+  public period = 'week';
+  public scopeShown = input<number>(0);
+  public scopeTotal = input<number>(0);
+  public isLoadingHistory = input<boolean>(false);
+  public selectedTab = ChartTypes.EVOLUTION;
+  public inversedData: EventGenericVariation[] = [];
+  public changeTabOutput = output<ChartTypes>();
+  public fullHistoryRequested = output<void>();
+  public changePeriodOutput = output<StatsPeriod>();
+
+  private readonly cdr = inject(ChangeDetectorRef);
+
+  public ngOnInit(): void {
+    const value = Object.keys(this.charts())[0] as ChartTypes;
+    this.selectedTab = value;
+    this.cdr.detectChanges();
+  }
+
+  public ngAfterViewInit(): void {
+    if (!this.needSpecialLoader()) {
+      setTimeout(() => {
+        this.isReady = true;
+        this.cdr.detectChanges();
+      }, 1500);
+    }
+  }
+
+  public getPlayerColor(entry: EventGenericVariation): string {
+    if (entry.point === 0) {
+      return 'gray';
+    }
+    // We randomize color based on player name to have consistent colors for same players
+    let hash = 0;
+    if (!entry.playerName) {
+      return '#000000';
+    }
+    for (let index = 0; index < entry.playerName.length; index++) {
+      const code = entry.playerName.codePointAt(index);
+      if (code) {
+        hash = code + ((hash << 5) - hash);
+      }
+    }
+    const color = Math.floor(Math.abs((Math.sin(hash) * 16_777_215) % 16_777_215)).toString(16);
+    return `#${'000000'.slice(0, Math.max(0, 6 - color.length)) + color}`;
+  }
+
+  public changeTab(tab: string): void {
+    this.selectedTab = tab as ChartTypes;
+    this.changeTabOutput.emit(tab as ChartTypes);
+    this.cdr.detectChanges();
+  }
+
+  public originalOrder = (): number => {
+    return 0;
+  };
+
+  public getHourPeriod(period: 'day' | 'week' | 'month' | 'year'): number {
+    switch (period) {
+      case 'day': {
+        return 1;
+      }
+      case 'week': {
+        return 7;
+      }
+      case 'month': {
+        return 30;
+      }
+      case 'year': {
+        return 365;
+      }
+      default: {
+        return 7;
+      }
+    }
+  }
+
+  public onChartComponentInitialized(chartComponent: ChartComponent): void {
+    if (this.isWeekly()) {
+      setTimeout(() => {
+        this.chartComps.toArray().forEach((chart) => {
+          chart.component = chartComponent;
+        });
+        setTimeout(() => {
+          this.isReady = true;
+          this.cdr.detectChanges();
+        }, 10);
+        this.cdr.detectChanges();
+      }, 10);
+    }
+  }
+
+  public changePeriod(period: 'day' | 'week' | 'month' | 'year'): void {
+    if (!this.chartComps) return;
+    this.period = period;
+    if (this.isWeekly()) {
+      this.changePeriodOutput.emit(period);
+      this.cdr.detectChanges();
+      return;
+    }
+    this.chartComps.toArray().forEach((chart) => {
+      const xaxis: ApexXAxis | ApexXAxis[] | undefined = chart.xaxis();
+      const categories = (Array.isArray(xaxis) ? xaxis[0]?.categories : xaxis?.categories) as string[];
+      const targetChart = chart.component;
+      if (!targetChart) return;
+      switch (period) {
+        case 'day': {
+          if (categories.length < 24) {
+            targetChart.zoomX(new Date(categories[0]).getTime(), new Date(categories.at(-1)!).getTime());
+          } else {
+            targetChart.zoomX(new Date(categories.at(-24)!).getTime(), new Date(categories.at(-1)!).getTime());
+          }
+          break;
+        }
+        case 'week': {
+          if (categories.length < 7 * 24) {
+            targetChart.zoomX(new Date(categories[0]).getTime(), new Date(categories.at(-1)!).getTime());
+          } else {
+            targetChart.zoomX(
+              new Date(categories[categories.length - 7 * 24]).getTime(),
+              new Date(categories.at(-1)!).getTime(),
+            );
+          }
+          break;
+        }
+        case 'month': {
+          if (categories.length < 30 * 24) {
+            targetChart.zoomX(new Date(categories[0]).getTime(), new Date(categories.at(-1)!).getTime());
+          } else {
+            targetChart.zoomX(
+              new Date(categories[categories.length - 30 * 24]).getTime(),
+              new Date(categories.at(-1)!).getTime(),
+            );
+          }
+          break;
+        }
+        case 'year': {
+          if (categories.length < 365 * 24) {
+            targetChart.zoomX(new Date(categories[0]).getTime(), new Date(categories.at(-1)!).getTime());
+          } else {
+            targetChart.zoomX(
+              new Date(categories[categories.length - 365 * 24]).getTime(),
+              new Date(categories.at(-1)!).getTime(),
+            );
+          }
+          break;
+        }
+      }
+    });
+    this.cdr.detectChanges();
+  }
+
+  public getIcon(selectedChart: string): string {
+    switch (selectedChart) {
+      case ChartTypes.EVOLUTION: {
+        return 'fas fa-chart-line';
+      }
+      case ChartTypes.PARTICIPATION_RATE: {
+        return 'fa-solid fa-circle-notch';
+      }
+      case ChartTypes.RADAR: {
+        return 'fas fa-chart-pie';
+      }
+      case ChartTypes.TABLE: {
+        return 'fas fa-table';
+      }
+      case ChartTypes.SCORES: {
+        return 'fas fa-chart-bar';
+      }
+      default: {
+        return 'fas fa-chart-line';
+      }
+    }
+  }
+
+  public get isOnSeriesTab(): boolean {
+    return this.scopeTotal() > 0 && this.selectedTab === Object.keys(this.charts())[0];
+  }
+
+  /**
+   * Asks the page for every run of this event
+   */
+  public requestFullHistory(): void {
+    if (this.isLoadingHistory() || this.scopeShown() >= this.scopeTotal()) return;
+    this.fullHistoryRequested.emit();
+  }
+}

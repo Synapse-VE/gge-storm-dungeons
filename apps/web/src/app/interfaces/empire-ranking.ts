@@ -1,0 +1,1666 @@
+import { ApiLootReset } from '@ggetracker-services/loot-reset.utilities';
+import {
+  ApexAxisChartSeries,
+  ApexChart,
+  ApexXAxis,
+  ApexFill,
+  ApexPlotOptions,
+  ApexYAxis,
+  ApexDataLabels,
+  ApexGrid,
+  ApexLegend,
+  ApexStroke,
+  ApexTitleSubtitle,
+  ApexTooltip,
+  ApexForecastDataPoints,
+  ApexAnnotations,
+  ApexMarkers,
+  ApexNonAxisChartSeries,
+} from 'ng-apexcharts';
+
+export interface ChartAdvancedOptions {
+  series?: ApexAxisChartSeries | ApexNonAxisChartSeries;
+  chart: ApexChart;
+  xaxis?: ApexXAxis | ApexXAxis[];
+  colors?: string[];
+  fill?: ApexFill;
+  plotOptions?: ApexPlotOptions;
+  yaxis?: ApexYAxis | ApexYAxis[];
+  dataLabels?: ApexDataLabels;
+  labels?: string[];
+  grid?: ApexGrid;
+  legend?: ApexLegend;
+  stroke?: ApexStroke;
+  title?: ApexTitleSubtitle;
+  tooltip?: ApexTooltip;
+  forecastDataPoints?: ApexForecastDataPoints;
+  markers?: ApexMarkers;
+  annotations?: ApexAnnotations;
+}
+
+export interface EventStatsData {
+  averageScore: number;
+  participatingEvents: number;
+  totalCompletedEvents: number;
+  participationRate: number;
+  trendPercent: number | null;
+}
+
+export interface ChartOptions {
+  series: ApexAxisChartSeries;
+  chart: ApexChart;
+  xaxis: ApexXAxis;
+  colors: string[];
+  fill: ApexFill;
+  plotOptions: ApexPlotOptions;
+  yaxis: ApexYAxis;
+  dataLabels: ApexDataLabels;
+  labels?: string[];
+  grid: ApexGrid;
+  legend: ApexLegend;
+  stroke: ApexStroke;
+  title: ApexTitleSubtitle;
+  tooltip: ApexTooltip;
+  forecastDataPoints?: ApexForecastDataPoints;
+  markers?: ApexMarkers;
+  annotations?: ApexAnnotations;
+}
+
+export interface AllianceStatsData {
+  alliance_name: string;
+  total_might: number;
+  player_count: number;
+}
+
+export interface Rename {
+  rank: number;
+  subjectLink: string[] | null;
+  might: number | null;
+  alliance: string | null;
+  oldPlayerName: string;
+  updatedPlayerName: string;
+  date: string;
+}
+
+export interface Dungeon {
+  rank: number;
+  kid: number;
+  image: string;
+  position: string;
+  positionX: number;
+  positionY: number;
+  playerId?: number;
+  playerName?: string;
+  playerMight?: number | null;
+  playerLevel?: number | null;
+  playerLegendaryLevel?: number | null;
+  lastAttackDate: string;
+  availableDurationSeconds?: number;
+  globalAvailableAt: string;
+  effectiveCooldownUntil: string;
+  distance?: number | null;
+  availabilityAnimDelay?: string;
+  availabilityExceeded?: boolean;
+}
+
+export enum StormIsleState {
+  FREE = 0,
+  OCCUPIED = 1,
+  RESPAWNING = 2,
+}
+
+export interface StormFort {
+  rank: number;
+  position: string;
+  positionX: number;
+  positionY: number;
+  isleId: number;
+  victoryCount: number;
+  attacksLeft: number;
+  isVisible: boolean;
+  availableAt: string;
+  availableSinceObserved: boolean;
+  lastAvailableSeconds: number | null;
+  availabilityAnimDelay?: string;
+  availabilityExceeded?: boolean;
+  updatedAt: string;
+  distance?: number | null;
+  effectiveCooldownUntil: string;
+}
+
+export interface StormIsle {
+  rank: number;
+  position: string;
+  positionX: number;
+  positionY: number;
+  objectId: number;
+  isleId: number;
+  state: StormIsleState;
+  occupierId?: number | null;
+  occupierName?: string | null;
+  occupierMight?: number | null;
+  occupierLevel?: number | null;
+  occupierLegendaryLevel?: number | null;
+  occupierAllianceName?: string | null;
+  availableAt: string;
+  availableSinceObserved: boolean;
+  lastAvailableSeconds: number | null;
+  availabilityAnimDelay?: string;
+  availabilityExceeded?: boolean;
+  updatedAt: string;
+  distance?: number | null;
+  effectiveCooldownUntil: string;
+}
+
+export interface Movement {
+  rank: number;
+  player: string;
+  playerId: string | null;
+  allianceId: string | null;
+  might: number | null;
+  level: number | null;
+  legendaryLevel: number | null;
+  alliance: string | null;
+  type: number;
+  date: string;
+  positionOld: (number | null)[];
+  positionNew: (number | null)[];
+}
+
+export interface Player {
+  rank: number;
+  playerId: number;
+  playerName: string;
+  allianceName: string | null;
+  allianceId: number | null;
+  allianceRank: number | null;
+  mightCurrent: number;
+  mightAllTime: number;
+  lootCurrent: number;
+  lootAllTime: number;
+  isFavorite?: boolean;
+  honor: number;
+  maxHonor: number;
+  currentFame: number;
+  highestFame: number;
+  remainingRelocationTime: number | null;
+  peaceDisabledAt: string | null;
+  updatedAt: string;
+  level: number | null;
+  distance?: number;
+  legendaryLevel: number | null;
+  allianceHistory?: ApiBasicAllianceUpdates[];
+}
+
+export interface Alliance {
+  id: number;
+  rank: number;
+  name: string;
+  playerCount: number;
+  activePlayerCount: number;
+  mightCurrent: number;
+  mightAllTime: number;
+  lootCurrent: number;
+  lootAllTime: number;
+  currentFame: number;
+  highestFame: number;
+  autoJoinEnabled: boolean;
+  description: string;
+  isIslandKing: boolean;
+  isSearchingPlayers: boolean;
+}
+
+export interface FavoritePlayer {
+  playerId: number;
+  playerName: string;
+}
+
+export interface AlliancesUpdates {
+  id: number | null;
+  date: string | null;
+  alliance: string | null;
+  original_new_alliance_name: string | null;
+  duration: string;
+  durationValue: number;
+}
+
+export interface PlayersUpdates {
+  date: string | null;
+  player: string | null;
+  duration: string;
+}
+
+export enum ChartTypes {
+  DEFAULT = 'Graphique',
+  EVOLUTION = 'Evolution',
+  PARTICIPATION_RATE = 'Participation',
+  RADAR = 'Classement',
+  TABLE = 'Données',
+  SCORES = 'Scores',
+  STATS = 'Stats',
+}
+
+export type Top3EventPlayers = Record<number, Record<number, EventEntry>>;
+
+export interface EventEntry {
+  date: string;
+  players: {
+    id: string;
+    point: number;
+  }[];
+}
+
+export interface EventGenericVariation extends ApiGenericData {
+  variation: number;
+  playerName?: string;
+  __hourKey?: string;
+}
+
+export enum CastleType {
+  CASTLE = 1,
+  REALM_CASTLE = 12,
+  CAPITAL = 3,
+  OUTPOST = 4,
+  CITY = 22,
+  ROYAL_TOWER = 23,
+  MONUMENT = 26,
+  LABORATORY = 28,
+}
+
+export enum ErrorType {
+  ERROR_OCCURRED = 'Une erreur est survenue',
+  NO_ALLIANCE_FOUND = 'Aucune alliance trouvée',
+  NO_PLAYER_FOUND = 'Aucun joueur trouvé',
+  ALLIANCE_ADDED = 'Alliance ajoutée',
+  ALLIANCE_REMOVED = 'Alliance retirée',
+  COPIED_TO_CLIPBOARD = 'Copié dans le presse-papier',
+  RATE_LIMIT_EXCEEDED = 'Trop de requêtes, veuillez réessayer plus tard.',
+}
+
+export enum CastleTypeDefaultTranslation {
+  CASTLE = 'Chateau principal',
+  OUTPOST = 'Avant-poste',
+  MONUMENT = 'Monument',
+  LABORATORY = 'Laboratoire',
+  CAPITAL = 'Capitale',
+  ROYAL_TOWER = 'Tour royale',
+  CITY = 'Cité marchande',
+  UNKNOWN = 'Inconnu',
+  MOVEMENT = 'Déménagement',
+  DELETED = 'supprimé',
+  NEW_PLAYER = 'Nouveau joueur',
+  ABANDONED = 'abandonné',
+  CONQUEST = "Conquête d'un",
+}
+
+export const WorldSizeDimensions = {
+  X: { MIN: 0, MAX: 1286 },
+  Y: { MIN: 0, MAX: 1286 },
+} as const;
+
+export interface CastleQuantity {
+  castle: number;
+  outpost: number;
+  monument: number;
+  laboratory: number;
+  capital: number;
+  royalTower: number;
+  city: number;
+  patriarch: number;
+}
+
+export interface Castle {
+  name: string;
+  castles: number[][];
+  pp: number;
+  alliance_id?: number;
+  alliance_name?: string;
+}
+
+export interface Monument {
+  type: string;
+  position: string;
+  owner: string;
+  kingdom?: number;
+  color: string;
+}
+
+export enum WatchModeStats {
+  SPECIFIC_ALLIANCE = 'one',
+  ALL_ALLIANCES = 'all',
+}
+
+export type SearchType = 'alliance' | 'player';
+
+export type ApiResponse<T> =
+  { success: true; error?: string; data: T; headers?: Headers } | { success: false; error: string };
+
+export interface ApiPagination {
+  current_page: number;
+  current_items_count: number;
+  total_pages: number;
+  total_items_count: number;
+}
+
+export interface ApiDungeonsResource {
+  kid: number;
+  position_x: number;
+  position_y: number;
+  player_id: number;
+  player_name?: string;
+  player_might?: number | null;
+  player_level?: number | null;
+  player_legendary_level?: number | null;
+  last_attack: string;
+  global_available_at: string;
+  available_duration_seconds?: number;
+  effective_cooldown_until: string;
+  distance?: number | null;
+}
+
+export interface ApiBasicAllianceUpdates {
+  date: string;
+  old_alliance_id: number | null;
+  new_alliance_id: number | null;
+}
+
+export interface ApiPlayerSearchResponse {
+  player_id: number;
+  player_name: string;
+  alliance_name: string;
+  alliance_id: number;
+  alliance_rank: number | null;
+  might_all_time: number;
+  might_current: number;
+  loot_all_time: number;
+  loot_current: number;
+  honor: number;
+  max_honor: number;
+  peace_disabled_at: string | null;
+  level: number | null;
+  legendary_level: number | null;
+  current_fame: number;
+  highest_fame: number;
+  calculated_distance?: number;
+  remaining_relocation_time: number | null;
+  max_fame: number;
+  updated_at: string;
+  alliance_history: ApiBasicAllianceUpdates[];
+}
+
+export interface PlayerLiveRankingExtended extends PlayerLiveRanking {
+  legendary_level: number;
+  level: number;
+}
+
+export interface PlayerLiveRanking {
+  castle_position: [number, number];
+  player_id: string;
+  player_name: string;
+  server: string;
+  data: ApiLiveRankingSpecificPlayerData[];
+}
+
+export interface ApiLiveRankingSpecificPlayerResponse {
+  player: PlayerLiveRanking;
+}
+
+export interface ApiLiveRankingSpecificPlayerData {
+  legendary_level: number;
+  level: number;
+  might: number;
+  rank: number;
+  score: number;
+  timestamp: string;
+}
+
+export type IOuterRealmEvent = 'might' | 'collector' | 'rankSwap' | null;
+
+export interface ApiLiveRankingResponse {
+  players: ApiLiveRanking[];
+  current_event: IOuterRealmEvent;
+  event_rules: { peace_duration_minutes: number; daily_ranking: boolean } | null;
+  collected_at: string;
+  previous_collected_at: string;
+  servers: string[];
+  pagination: ApiPagination;
+}
+
+export type LiveRankingSortField =
+  'rank' | 'score' | 'might' | 'level' | 'score_diff' | 'rank_diff' | 'player_name' | 'distance';
+
+export type LiveRankingMovement = 'up' | 'down' | 'steady';
+
+export type LiveRankingExportFormat = 'csv' | 'json' | 'ndjson';
+
+export interface LiveRankingFilters {
+  playerName?: string;
+  servers?: string[];
+  minLevel?: number;
+  maxLevel?: number;
+  minMight?: number;
+  maxMight?: number;
+  minScore?: number;
+  maxScore?: number;
+  minRank?: number;
+  maxRank?: number;
+  activeOnly?: boolean;
+  movement?: LiveRankingMovement;
+  near?: { x: number; y: number; radius?: number };
+  orderBy?: LiveRankingSortField;
+  orderDir?: 'asc' | 'desc';
+}
+
+export interface ApiWoaEventListResponse {
+  pagination: ApiPagination;
+  events: {
+    date: string;
+    participants: number;
+    total_tickets: string;
+    id: string;
+  }[];
+}
+
+export interface ApiWoaPlayerDataResponse {
+  player_id: string;
+  player_name: string;
+  alliance_id: string;
+  alliance_name: string;
+  alliance_rank: number | null;
+  player_current_might: number;
+  player_all_time_might: number;
+  player_level: number;
+  player_legendary_level: number;
+  point: number;
+}
+
+export interface ApiWoaEventDataResponse {
+  players: ApiWoaPlayerDataResponse[];
+  event_date: string;
+  pagination: ApiPagination;
+}
+
+export interface ApiWoaEventPlayerData {
+  point: number;
+  date: string;
+  rank: number;
+}
+export interface ApiWoaEventPlayerAggregates {
+  total_points: number;
+  events_count: number;
+  first_event: string | null;
+  best_point: number;
+  best_point_date: string | null;
+  best_rank: number;
+  best_rank_date: string | null;
+}
+
+export interface ApiWoaEventPlayerCoverage {
+  first_tracked_event: string | null;
+  tracked_events_count: number;
+  tracked_events_since_player: number;
+}
+
+export interface ApiWoaEventPlayerDataResponse {
+  events: ApiWoaEventPlayerData[];
+  player: ApiWoaEventPlayerAggregates;
+  coverage: ApiWoaEventPlayerCoverage;
+}
+
+export interface ApiLiveRanking {
+  player_id: string;
+  player_name: string;
+  server: string;
+  rank: number;
+  level: number;
+  score: number;
+  legendary_level: number;
+  might: number;
+  castle_position: [number, number];
+  rank_diff: number;
+  score_diff: number;
+  distance?: number;
+}
+export interface ApiAllianceSearchResponse {
+  alliance_id: number;
+  alliance_name: string;
+  player_count: number;
+  might_current: number;
+  might_all_time: number;
+  loot_current: number;
+  loot_all_time: number;
+  current_fame: number;
+  highest_fame: number;
+  active_player_count: number;
+  auto_join_enabled: boolean;
+  description: string;
+  is_island_king: boolean;
+  is_searching_players: boolean;
+}
+
+export interface ApiProfileServer {
+  server: string;
+  server_code: string;
+  server_name: string | null;
+  weekly_reset_offset_hours?: number | null;
+  loot_reset?: ApiLootReset | null;
+}
+
+export interface ApiAllianceMemberChange {
+  player_id: string;
+  player_name: string | null;
+  direction: 'joined' | 'left';
+  occurred_at: string;
+}
+
+export interface ApiBulkPlayer {
+  player_id: string;
+  player_name: string;
+  alliance_id: string | null;
+  alliance_name: string | null;
+  might_current: number;
+  loot_current: number;
+  honor: number;
+}
+
+export interface ApiBulkAlliance {
+  alliance_id: string;
+  alliance_name: string;
+  player_count: number;
+  might_current: number;
+  loot_current: number;
+}
+
+export interface ApiBulkPlayersResponse {
+  missing: string[];
+  players: ApiBulkPlayer[];
+}
+
+export interface ApiBulkAlliancesResponse {
+  missing: string[];
+  alliances: ApiBulkAlliance[];
+}
+
+export interface ApiPlayerProfileIdentity {
+  player_id: string;
+  player_name: string;
+  alliance_id: string | null;
+  alliance_name: string | null;
+  alliance_rank: number | null;
+  might_current: number;
+  might_all_time: number;
+  loot_current: number;
+  loot_all_time: number;
+  honor: number;
+  max_honor: number;
+  highest_fame: number;
+  current_fame: number;
+  level: number;
+  legendary_level: number;
+  peace_disabled_at: string | null;
+  updated_at: string;
+}
+
+export interface ApiPlayerProfile extends ApiProfileServer {
+  player: ApiPlayerProfileIdentity;
+  castles?: { kingdom_id: number; castle_type: number; position_x: number; position_y: number }[];
+  rank?: { might_current: number; loot_current: number; honor: number; current_fame: number; ranked_players: number };
+}
+
+export interface ApiSuggestion {
+  id: string;
+  name: string;
+  might_current: number;
+}
+
+export interface ApiPlayerSuggestion extends ApiSuggestion {
+  level: number;
+  legendary_level: number;
+  alliance_name: string | null;
+}
+
+export interface ApiAllianceSuggestion extends ApiSuggestion {
+  player_count: number;
+}
+
+export interface ApiSuggestionsResponse<T extends Partial<ApiSuggestion>> {
+  suggestions: T[];
+}
+
+export interface ApiAllianceProfileMember {
+  player_id: string;
+  player_name: string;
+  might_current: number;
+  loot_current: number;
+}
+
+export interface ApiAllianceProfile extends ApiProfileServer {
+  alliance: { alliance_id: string; alliance_name: string; language: string | null };
+  members?: ApiAllianceProfileMember[];
+  member_changes?: ApiAllianceMemberChange[];
+  rank?: {
+    might_current: number | null;
+    loot_current: number | null;
+    current_fame: number | null;
+    ranked_alliances: number;
+  };
+  statistics: {
+    player_count: number;
+    active_player_count: number;
+    might_current: number;
+    might_all_time: number;
+    loot_current: number;
+    loot_all_time: number;
+    current_fame: number;
+    highest_fame: number;
+    average_level: number;
+  };
+}
+
+export interface ApiAllianceDescriptionHistory {
+  created_at: string;
+  old_description: string;
+  new_description: string;
+}
+
+export interface ApiAlliancePlayersSearchResponse {
+  alliance_name: string;
+  auto_join_enabled: boolean;
+  description: string;
+  is_island_king: boolean;
+  description_history: ApiAllianceDescriptionHistory[];
+  is_searching_players: boolean;
+  players: ApiPlayerSearchResponse[];
+}
+
+export interface ApiUpdateAlliancePlayersResponse {
+  updates: ApiUpdateAlliancePlayers[];
+}
+
+export interface ApiUpdateAlliancePlayers {
+  created_at: string;
+  legendary_level: number | null;
+  level: number | null;
+  loot_current: number;
+  might_current: number;
+  new_alliance_id: number | null;
+  old_alliance_id: number | null;
+  player_id: number;
+  player_name: string;
+}
+
+export type ISelectedTab = 'movement' | 'description' | 'stats' | 'progress' | 'members' | 'movements' | 'health';
+
+export interface GroupedUpdatesByDate {
+  date: string;
+  updates: {
+    created_at: string;
+    action: 'joined' | 'left';
+    player_name: string;
+    level: string;
+    might_change: string;
+  }[];
+}
+
+export interface ApiGenericResponse {
+  duration: string;
+  pagination: ApiPagination;
+}
+export interface ApiMovementsResponse extends ApiGenericResponse {
+  movements: ApiMovement[];
+}
+
+export interface ApiRenamesResponse extends ApiGenericResponse {
+  renames: ApiRenames[];
+}
+export interface ApiDungeonsAttackHistory {
+  kid: number;
+  position_x: number;
+  position_y: number;
+  attacked_at: string;
+}
+
+export interface ApiDungeonsByPlayerIdResponse extends ApiGenericResponse {
+  dungeons: ApiDungeonsAttackHistory[];
+}
+
+export interface ApiDungeonsResponse extends ApiGenericResponse {
+  dungeons: ApiDungeonsResource[];
+}
+
+export interface ApiDungeonsMetaResponse {
+  last_scan_at: string | null;
+}
+
+export interface ApiStormFort {
+  kid: number;
+  position_x: number;
+  position_y: number;
+  isle_id: number;
+  victory_count: number;
+  attacks_left: number;
+  is_visible: boolean;
+  available_at: string;
+  available_since_observed: boolean;
+  last_available_seconds: number | null;
+  updated_at: string;
+  distance?: number | null;
+}
+
+export interface ApiStormIsle {
+  kid: number;
+  position_x: number;
+  position_y: number;
+  object_id: number;
+  isle_id: number;
+  state: number;
+  occupier_id: number | null;
+  occupier_name: string | null;
+  occupier_might: number | null;
+  occupier_level: number | null;
+  occupier_legendary_level: number | null;
+  occupier_alliance_name: string | null;
+  available_at: string;
+  available_since_observed: boolean;
+  last_available_seconds: number | null;
+  updated_at: string;
+  distance?: number | null;
+}
+
+export interface ApiStormFortsResponse extends ApiGenericResponse {
+  forts: ApiStormFort[];
+}
+
+export interface ApiStormIslesResponse extends ApiGenericResponse {
+  isles: ApiStormIsle[];
+}
+
+export interface ApiStormMetaResponse {
+  season_started_at: string | null;
+  scan_radius: number;
+  last_scan_at: string | null;
+  forts_count: number;
+  isles_count: number;
+}
+
+export interface ApiPlayersResponse extends ApiGenericResponse {
+  players: ApiPlayerSearchResponse[];
+}
+
+export interface ApiGlobalPlayer {
+  player_id: string;
+  player_name: string;
+  server: string;
+  alliance_id: string | null;
+  alliance_name: string | null;
+  alliance_rank: number | null;
+  level: number | null;
+  legendary_level: number | null;
+  might_current: number;
+  might_all_time: number;
+  loot_current: number;
+  loot_all_time: number;
+  current_fame: number;
+  highest_fame: number;
+  honor: number | null;
+  max_honor: number | null;
+  peace_disabled_at: string | null;
+}
+
+export interface ApiGlobalPlayersResponse {
+  pagination: ApiPagination;
+  players: ApiGlobalPlayer[];
+}
+
+export interface ApiGlobalAlliance {
+  alliance_id: string;
+  alliance_name: string | null;
+  server: string;
+  might_current: number;
+  might_all_time: number;
+  loot_current: number;
+  loot_all_time: number;
+  current_fame: number;
+  highest_fame: number;
+  player_count: number;
+  active_player_count: number;
+}
+
+export interface ApiGlobalAlliancesResponse {
+  pagination: ApiPagination;
+  alliances: ApiGlobalAlliance[];
+}
+
+export interface ApiAllianceResponse extends ApiGenericResponse {
+  alliances: ApiAllianceSearchResponse[];
+}
+
+export interface ApiMovement {
+  player_id?: string | null;
+  alliance_id?: string | null;
+  alliance_name: string | null;
+  created_at: string;
+  movement_type: 'add' | 'remove' | 'move';
+  player_name: string;
+  player_might: number | null;
+  player_level: number | null;
+  player_legendary_level: number | null;
+  position_x_new: number | null;
+  position_x_old: number | null;
+  position_y_new: number | null;
+  position_y_old: number | null;
+  castle_type: number;
+}
+
+export interface ApiRenames {
+  date: string;
+  player_id?: string | null;
+  alliance_id?: string | null;
+  player_name: string;
+  player_might: number | null;
+  alliance_name: string | null;
+  old_player_name: string;
+  new_player_name: string;
+}
+
+export interface ApiLastUpdates {
+  api_url: string;
+  documentation_url: string;
+  discord_url: string;
+  discord_member_count?: number;
+  release_version: string;
+  website_url: string;
+  server: string;
+  server_code: string;
+  zone: string;
+  platform: 'EP' | 'E4K' | 'PARTNER';
+  version: string;
+  generated_at: string;
+  update_in_progress: boolean;
+  last_update: {
+    berimond_invasion: string;
+    berimond_kingdom: string;
+    bloodcrow: string;
+    loot: string;
+    might: string;
+    nomad: string;
+    samurai: string;
+    war_realms: string;
+  };
+  data: {
+    version: number;
+    state: 'idle' | 'updating';
+    age_seconds: number | null;
+    stale: boolean;
+    last_fill_started_at: string | null;
+    last_fill_completed_at: string | null;
+    last_fill_duration_seconds: number | null;
+    fill_interval_seconds: number;
+    next_fill_estimated_at: string | null;
+    next_data_estimated_at: string | null;
+    steps: { name: string; completed_at: string; completed_in_last_fill: boolean }[];
+  };
+  dataset: { players: number | null; alliances: number | null; snapshot_at: string } | null;
+  weekly_loot_reset: {
+    offset_hours: number;
+    timezone?: string;
+    local_time?: string;
+    last_reset_at: string;
+    next_reset_at: string;
+    seconds_until_next_reset: number;
+  } | null;
+  polling: {
+    recommended_interval_seconds: number;
+    poll_after: string | null;
+    cache_ttl_seconds: number;
+    etag: string;
+    instructions: string;
+  };
+  rate_limit: { requests: number; window_seconds: number; applies_to_this_route: boolean };
+}
+
+export enum ApiPlayerStatsType {
+  might = 'player_might_history',
+  loot = 'player_loot_history',
+  berimond_invasion = 'player_event_berimond_invasion_history',
+  berimond_kingdom = 'player_event_berimond_kingdom_history',
+  bloodcrow = 'player_event_bloodcrow_history',
+  nomad = 'player_event_nomad_history',
+  samurai = 'player_event_samurai_history',
+  war_realms = 'player_event_war_realms_history',
+}
+
+export type ApiPlayerStatsValue = (typeof ApiPlayerStatsType)[keyof typeof ApiPlayerStatsType];
+
+export interface ApiGenericData {
+  date: string;
+  utcDate?: string;
+  point: number;
+}
+
+export type ApiPlayerStats = Record<ApiPlayerStatsType, ApiGenericData[]>;
+
+export type ApiPlayerStatsForAlliance = Record<ApiPlayerStatsType, ApiPlayerStatsAlliance[]>;
+
+export interface ApiPlayerStatsAlliance extends ApiGenericData {
+  player_id: number;
+}
+
+export interface ApiPlayerStatsByPlayerId {
+  alliance_id: number;
+  alliance_name: string;
+  diffs: Record<ApiPlayerStatsType, number>;
+  player_name: string;
+  points: ApiPlayerStats;
+  glory_points_100: { top: number; point: number }[];
+  timezone_offset: number | null;
+  loot_reset?: ApiLootReset | null;
+}
+
+export interface ApiPlayerStatsSummaryEvent {
+  row_count: number;
+  row_count_7d: number;
+  first_date: string | null;
+  last_date: string | null;
+  last_point: number | null;
+  max_point: number | null;
+  max_point_date: string | null;
+  max_point_7d: number | null;
+  point_gain_7d: number | null;
+}
+
+export interface ApiPlayerEventOccurrence {
+  started_at: string;
+  ended_at: string;
+  point: number;
+}
+
+export interface ApiPlayerEventOccurrences {
+  event: ApiPlayerStatsType;
+  occurrences: ApiPlayerEventOccurrence[];
+}
+
+export interface ApiPlayerStatsSummary {
+  player_name: string;
+  alliance_name: string | null;
+  alliance_id: number | null;
+  events: Record<ApiPlayerStatsType, ApiPlayerStatsSummaryEvent>;
+  glory_points_100: { top: number; point: number }[];
+  timezone_offset: number | null;
+  loot_reset?: ApiLootReset | null;
+}
+
+export interface ApiPlayerStatsByAllianceId {
+  diffs: Record<ApiPlayerStatsType, number>;
+  points: ApiPlayerStatsForAlliance;
+  timezoneOffset: number | null;
+  lootReset?: ApiLootReset | null;
+}
+
+export interface ApiAllianceHealthResponse {
+  daily_avg_might_change: { date: string; avg_diff: number }[];
+  might_intra_variation: { date: string; avg_diff: number }[];
+  might_per_hour: { date: string; point: number }[];
+  top_might_gain_7d: { current: number; diff: number; player_id: string }[];
+  top_might_gain_24h: { current: number; diff: number; player_id: string }[];
+  top_might_loss_7d: { current: number; diff: number; player_id: string }[];
+  top_might_loss_24h: { current: number; diff: number; player_id: string }[];
+}
+
+export interface ApiOffersCatalogResponse {
+  _failed?: Record<string, unknown>;
+  [category: string]: ApiOfferCategory | Record<string, unknown> | undefined;
+}
+
+export interface ApiOffersCatalog {
+  catalog: ApiOffersCatalogResponse;
+  fetchedAt: string | null;
+  pricedIn: string | null;
+}
+
+export interface ApiOfferCategory {
+  data?: {
+    offers?: ApiOffer[] | null;
+    settings?: { tooltipsEnabled?: boolean };
+    eventDetails?: { type?: string; bonus?: number; endTimeStamp?: number };
+  };
+}
+
+export interface ApiOffer {
+  id: string;
+  name?: string;
+  title?: string;
+  desc?: string;
+  price: number;
+  currencyCode?: string;
+  currency?: string;
+  teaserImg?: string;
+  headerImageUrl?: string;
+  bonus?: number;
+  rewards?: ApiOfferReward[];
+  hardCurrencyAmount?: number;
+  hardCurrencyOriginalAmount?: number;
+  baseHCValue?: number;
+  bonusHCValue?: number;
+  special?: boolean;
+  active?: boolean;
+  purchased?: boolean;
+  type?: string;
+  approximatePrice?: boolean;
+  priceUnknown?: boolean;
+}
+
+export interface ApiOfferReward {
+  id?: string;
+  type?: string;
+  qty?: number;
+  title?: string;
+  desc?: string;
+  details?: string;
+  iconUrl?: string;
+}
+
+export interface ApiEventWinner {
+  player_id: string | null;
+  player_name: string;
+  server: string;
+  point: string;
+}
+
+export interface ApiEventlist {
+  events: {
+    event_num: number;
+    collect_date: string;
+    player_count: number;
+    type: 'outer_realms' | 'beyond_the_horizon';
+    winner?: ApiEventWinner | null;
+  }[];
+  pagination: ApiPagination;
+}
+export interface ApiOuterRealmPlayer {
+  player_id: number;
+  player_name: string;
+  alliance_name: string | null;
+  rank: number;
+  point: string;
+  server: string;
+}
+export interface ApiOuterRealmPlayers {
+  pagination: ApiPagination;
+  players: ApiOuterRealmPlayer[];
+}
+
+export interface IGenericGgeDataObject {
+  wodID: number;
+  objectID: number;
+  positionX: number;
+  positionY: number;
+  rotation: number;
+  constructionCompletionInSec: number;
+  buildingState: number;
+  hitPoints: number;
+  constructionBoostAtStart: number;
+  efficiency: number;
+  internalID?: string;
+  damageType: number;
+  inDistrictID: number;
+  districtSlotID: number;
+  damageFactor: number;
+}
+
+export interface ApiPlayerCastleGenericBase {
+  castleName: string;
+  castleType: number;
+  legendaryLevel: number | null;
+  level: number;
+  playerName: string;
+  positionX: number;
+  positionY: number;
+}
+
+export interface IMappedBuildingUnknownDataElement {
+  [key: string]: string | number | boolean | null;
+}
+
+export interface IMappedBuildingElement {
+  building: IGenericGgeDataObject;
+  data: IMappedBuildingUnknownDataElement;
+  constructionItems: { [key: string]: ConstructionItem };
+}
+
+export interface ConstructionItem {
+  [key: string]: string | boolean | number | null;
+}
+
+export interface ApiPlayerCastleDataMapped extends ApiPlayerCastleGenericBase {
+  data: {
+    buildings: IMappedBuildingElement[];
+    defenses: IMappedBuildingElement[];
+    gates: IMappedBuildingElement[];
+    grounds: IMappedBuildingElement[];
+    towers: IMappedBuildingElement[];
+  };
+  constructionItems: ConstructionItem[];
+}
+
+export interface ApiPlayerCastleDataResponse extends ApiPlayerCastleGenericBase {
+  data: {
+    buildings: IGenericGgeDataObject[];
+    defenses: IGenericGgeDataObject[];
+    gates: IGenericGgeDataObject[];
+    grounds: IGenericGgeDataObject[];
+    towers: IGenericGgeDataObject[];
+  };
+  constructionItems: {
+    [key: string]: [number, number][];
+  };
+}
+
+export interface ApiGrandTournamentDatesResponse {
+  events: {
+    dates: string[];
+    event_id: number;
+  }[];
+}
+
+export interface ApiGrandTournamentAlliance {
+  alliance_id: number;
+  alliance_name: string;
+  server: string;
+  rank: number;
+  score: number;
+  subdivision: number;
+}
+
+export interface ApiGrandTournamentSearchAlliances extends ApiGrandTournamentAlliance {
+  division: number;
+  subdivision: number;
+}
+
+export interface ApiGrandTournamentAlliancesResponse {
+  event: {
+    alliances: ApiGrandTournamentAlliance[];
+    division: {
+      current_division: number;
+      max_division: number;
+      min_division: number;
+    };
+    subdivision: {
+      current_subdivision: number;
+      max_subdivision: number;
+      min_subdivision: number;
+    };
+  };
+  pagination: {
+    current_items_count: number;
+    current_page: number;
+    total_items_count: number;
+    total_pages: number;
+  };
+}
+
+export interface ApiAllianceAnalysis {
+  division: number;
+  subdivision: number;
+  rank: number;
+  score: number;
+  date: string;
+}
+
+export interface ApiGrandTournamenAllianceAnalysisResponse {
+  meta: {
+    alliance_id: number;
+    alliance_name: string;
+    server: string;
+  };
+  analysis: ApiAllianceAnalysis[];
+}
+
+export type RiftRaidGame = 'ep' | 'e4k';
+
+export interface ApiRiftRaidDatesResponse {
+  events: {
+    dates: string[];
+    event_id: number;
+  }[];
+}
+
+export interface ApiRiftRaidAlliance {
+  alliance_id: number | null;
+  alliance_name: string;
+  server: string | null;
+  rank: number;
+  score: number;
+  division: number;
+  subdivision: number;
+}
+
+export interface ApiRiftRaidAlliancesResponse {
+  event: {
+    alliances: ApiRiftRaidAlliance[];
+    division: {
+      current_division: number;
+      max_division: number;
+      min_division: number;
+    };
+    subdivision: {
+      current_subdivision: number | null;
+      max_subdivision: number;
+      min_subdivision: number;
+    };
+  };
+  pagination: ApiPagination;
+}
+
+export interface ApiRiftRaidSearchResponse {
+  alliances: ApiRiftRaidAlliance[];
+  pagination: ApiPagination;
+}
+
+export interface ApiRiftRaidAllianceAnalysisResponse {
+  meta: {
+    alliance_id: number;
+    alliance_name: string | null;
+    server: string;
+    game: RiftRaidGame;
+  };
+  analysis: ApiAllianceAnalysis[];
+}
+
+export interface ApiTournamentStanding {
+  event_id: number;
+  division: number;
+  subdivision: number;
+  rank: number;
+  score: number;
+  date: string;
+}
+
+export interface ApiAllianceTournamentStandingsResponse {
+  grand_tournament: ApiTournamentStanding | null;
+  rift_raid: ApiTournamentStanding | null;
+}
+
+export interface ApiEventsByPlayerIdResponse {
+  events: ApiSpecificEventByPlayerIdResponse[];
+}
+
+export enum EventType {
+  OUTER_REALM = 'outer-realms',
+  BEYOND_THE_HORIZON = 'beyond-the-horizon',
+}
+
+export interface ApiSpecificEventByPlayerIdResponse {
+  type: EventType;
+  event_num: number;
+  collect_date: string;
+  rank: number;
+  point: string;
+  server: string;
+}
+
+export interface OuterEventData extends ApiSpecificEventByPlayerIdResponse {
+  from: Date;
+  to: Date;
+}
+
+export interface WoaEvent {
+  playerCount: number;
+  totalTickets: number;
+  id: string;
+  type: string;
+  from: Date;
+  to: Date;
+  date: string;
+}
+
+export interface WoaEventList {
+  point: number;
+  date: Date;
+  type: string;
+  rank: number;
+  from: Date;
+  to: Date;
+}
+
+export interface WoaSummaryHighlight {
+  value: number;
+  date: Date | null;
+}
+
+export interface WoaPlayerSummary {
+  totalTickets: number;
+  eventCount: number;
+  averageTickets: number;
+  bestEvent: WoaSummaryHighlight;
+  bestRankEvent: WoaSummaryHighlight;
+  trendPercent: number | null;
+  coverageStart: Date | null;
+  trackedEvents: number;
+}
+
+export interface ApiGrandTournamentAlliancesSearchResponse {
+  alliances: ApiGrandTournamentSearchAlliances[];
+  pagination: {
+    current_items_count: number;
+    current_page: number;
+    total_items_count: number;
+    total_pages: number;
+  };
+}
+
+export interface ApiPlayerCastleNameResponse {
+  kingdomId: number;
+  dummy?: boolean;
+  id: number;
+  positionX: number;
+  positionY: number;
+  type: number;
+  name: string;
+  keepLevel: number;
+  wallLevel: number;
+  gateLevel: number;
+  towerLevel: number;
+  moatLevel: number;
+  equipmentUniqueIdSkin: number;
+  equipment?: any;
+  isAvailable: boolean;
+}
+
+export interface KingdomRealm {
+  key: string;
+  label: string;
+  image?: string;
+  translated?: string;
+}
+
+export interface ApiRankingStatsPlayer {
+  player_name: string;
+  alliance_name: string | null;
+  player_id: number;
+  server: string;
+  might_current: number;
+  might_all_time: number;
+  current_fame: number;
+  highest_fame: number;
+  peace_disabled_at: string | null;
+  player_current_fame_rank: string | null;
+  updated_at: string;
+  loot_current: number;
+  loot_all_time: number;
+  level: number | null;
+  legendary_level: number | null;
+  honor: number;
+  max_honor: number;
+  castles: number[][] | null;
+  castles_realm: number[][] | null;
+  server_rank: number;
+  global_rank: number;
+}
+
+export interface ApiOuterRealmEvent {
+  event_id: string;
+  event_type: string;
+  collect_date: string;
+  nb_in_top_100: {
+    server: string;
+    nb_in_top_100: string;
+  }[];
+  top_scores: {
+    top_1: string;
+    top_2: string;
+    top_3: string;
+    top_100: string;
+    top_1000: string;
+    top_10000: string;
+  };
+  rank_distribution: {
+    server: string;
+    top_100: string;
+    top_1000: string;
+    top_10000: string;
+  }[];
+  score_stats: {
+    avg_score: string;
+    median_score: string;
+    max_score: string;
+  };
+  score_stddev: string;
+  level_distribution: {
+    level: number;
+    nb_players: string;
+    avg_score: string;
+  }[];
+  server_avg_score: {
+    server: string;
+    avg_score: string;
+    median_score: number;
+    nb_players: string;
+  }[];
+  top_100_ratio: {
+    server: string;
+    ratio_top_100: number;
+  }[];
+}
+
+export interface ApiTop3EventsById {
+  topPlayers: ApiTop3Events[];
+}
+
+export interface ApiTop3Events {
+  date: string;
+  top_players: string;
+}
+
+export interface ApiAllianceUpdates {
+  date: string;
+  old_alliance_id: number | null;
+  old_alliance_name: string | null;
+  new_alliance_id: number | null;
+  new_alliance_name: string | null;
+  original_new_alliance_name: string | null;
+  original_old_alliance_name: string | null;
+}
+
+export interface ApiPlayerUpdates {
+  date: string;
+  old_player_name: string | null;
+  new_player_name: string | null;
+}
+
+export interface ApiAllianceUpdatesByPlayerId {
+  updates: ApiAllianceUpdates[];
+}
+
+export interface ApiPlayerUpdatesByPlayerId {
+  updates: ApiPlayerUpdates[];
+}
+
+export interface ApiServerStats {
+  avg_might: number;
+  avg_loot: number;
+  avg_honor: number;
+  avg_level: number;
+  max_might: number;
+  max_loot: number;
+  players_count: number;
+  alliance_count: number;
+  players_who_changed_alliance: number;
+  players_who_changed_name: number;
+  total_might: number;
+  total_loot: number;
+  total_honor: number;
+  variation_might: number;
+  variation_loot: number;
+  variation_honor: number;
+  alliances_changed_name: number;
+  events_count: number;
+  events_top_3_names: Record<string, { id: string; point: number }[]>;
+  events_participation_rate: Record<string, [number, number]>;
+  event_nomad_points: number | null;
+  event_war_realms_points: number | null;
+  event_bloodcrow_points: number | null;
+  event_samurai_points: number | null;
+  event_berimond_invasion_points: number | null;
+  event_berimond_kingdom_points: number | null;
+  event_nomad_players: number | null;
+  event_berimond_invasion_players: number | null;
+  event_berimond_kingdom_players: number | null;
+  event_bloodcrow_players: number | null;
+  event_samurai_players: number | null;
+  event_war_realms_players: number | null;
+  created_at: string;
+  players_in_peace: number;
+  max_might_player_id?: number | null;
+  max_loot_player_id?: number | null;
+  avg_fame: number;
+  max_fame: number;
+  total_fame: number;
+}
+
+export interface ApiCartoAlliance {
+  name: string;
+  castles: [number, number, number][] | null;
+  castles_realm: [number, number, number, number][] | null;
+  might_current: number;
+}
+
+export interface ApiCartoMap extends ApiCartoAlliance {
+  alliance_name: string;
+  alliance_id: number;
+}
+
+export interface IRankingStatsPlayer {
+  playerId: number;
+  server: string;
+  mightCurrent: number;
+  mightAllTime: number;
+  currentFame: number;
+  highestFame: number;
+  playerCurrentFameRank: number;
+  updatedAt: Date;
+  peaceDisabledAt: Date | null;
+  lootCurrent: number;
+  lootAllTime: number;
+  level: number;
+  legendaryLevel: number;
+  honor: number;
+  maxHonor: number;
+  serverRank: number;
+  globalRank: number;
+  totalLevel: number;
+  castles: number[][];
+  totalCastles: number;
+}
+
+export type PlayerStatsTabs = 'overview' | 'loot' | 'alliances' | 'castles' | 'glory' | 'events' | 'woa' | 'aquamarine';
+
+export interface ApiAquamarineMetric {
+  metric_id: number;
+  value: number;
+}
+
+export interface ApiAquamarineSnapshot {
+  collected_at: string;
+  metrics: ApiAquamarineMetric[];
+}
+
+export interface ApiAquamarinePlayerResponse {
+  player_id: string;
+  snapshots: ApiAquamarineSnapshot[];
+}
+
+export interface ApiStormyIslesPlayer {
+  rank: number;
+  player_id: string | number;
+  player_name: string;
+  alliance_id: string | number | null;
+  alliance_name: string | null;
+  might_current: number;
+  might_all_time: number;
+  level: number;
+  legendary_level: number;
+  alliance_might: number;
+  alliance_player_count: number;
+  metrics: Record<number, number>;
+  collected_at: string;
+}
+
+export interface ApiStormyIslesLeaderboardResponse {
+  players: ApiStormyIslesPlayer[];
+  snapshot_date: string | null;
+  pagination: {
+    current_page: number;
+    total_pages: number;
+    current_items_count: number;
+    total_items_count: number;
+  };
+}
+
+export interface RankingFameTitle {
+  decay?: number;
+  displayType: string;
+  topX?: number;
+  mightValue: string;
+  threshold?: number;
+  titleID: string;
+  type: string;
+}
+
+export type ApiEventThresholdSlug =
+  'nomad' | 'samurai' | 'bloodcrow' | 'war-realms' | 'berimond-kingdom' | 'berimond-invasion';
+
+export interface ApiEventThresholdOccurrence {
+  started_at: string;
+  ended_at: string;
+  participants: number;
+  thresholds: number[];
+}
+
+export interface ApiEventThresholdRange {
+  median: (number | null)[];
+  low: (number | null)[];
+  high: (number | null)[];
+}
+
+export interface ApiEventThresholdsResponse {
+  event: ApiEventThresholdSlug;
+  server: string;
+  ranks: number[];
+  running: boolean;
+  live_events?: ApiEventThresholdSlug[];
+  current: (ApiEventThresholdOccurrence & { hour: number; projected: ApiEventThresholdRange }) | null;
+  typical: ApiEventThresholdRange | null;
+  occurrences: ApiEventThresholdOccurrence[];
+  pace: { started_at: string; running: boolean; points: { hour: number; thresholds: number[] }[] }[];
+}
+
+export type ApiReleaseItemKind = 'new' | 'improved' | 'servers' | 'translations' | 'fixed';
+
+export type ApiReleaseChangeKind = 'new' | 'changed' | 'legacy' | 'removed';
+
+export interface ApiReleaseItem {
+  kind: ApiReleaseItemKind;
+  area: string | null;
+  text: string;
+}
+
+export interface ApiReleaseChange {
+  change: ApiReleaseChangeKind;
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  path: string;
+  tag: string;
+  note: string;
+}
+
+export interface ApiRelease {
+  version: string;
+  type: 'Major' | 'Minor' | 'Fix';
+  date: string;
+  items: ApiReleaseItem[];
+  api_changes: ApiReleaseChange[];
+}
+
+export interface ApiReleaseNotesResponse {
+  releases: ApiRelease[];
+}

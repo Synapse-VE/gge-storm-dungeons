@@ -1,0 +1,832 @@
+import { NgClass } from '@angular/common';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject, OnInit, ViewChild } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { GenericComponent } from '@ggetracker-components/generic/generic.component';
+import { ModalFormGroupComponent } from '@ggetracker-components/modal-form-group/modal-form-group.component';
+import { SearchFormComponent } from '@ggetracker-components/search-form/search-form.component';
+import { TableComponent } from '@ggetracker-components/table/table.component';
+import {
+  ApiPlayerSearchResponse,
+  ApiPlayersResponse,
+  ErrorType,
+  FavoritePlayer,
+  KingdomRealm,
+  Player,
+  SearchType,
+} from '@ggetracker-interfaces/empire-ranking';
+import { FormatNumberPipe } from '@ggetracker-pipes/format-number.pipe';
+import { FollowService } from '@ggetracker-services/follow.service';
+import { LocalStorageService } from '@ggetracker-services/local-storage.service';
+import { TranslateModule } from '@ngx-translate/core';
+import { ArrowBigRightDash, LucideAngularModule } from 'lucide-angular';
+import { PlayerTableContentComponent } from './player-table-content/player-table-content.component';
+import { IconComponent } from '@ggetracker-components/icon/icon.component';
+import { BoundType, FilterKeyMap } from '@ggetracker-interfaces/filter';
+import { IconToggleComponent } from './icon-toggle/icon-toggle.component';
+import { NgSelectModule } from '@ng-select/ng-select';
+import { ServerService } from '@ggetracker-services/server.service';
+import { GlobalPlayersComponent } from './global-players/global-players.component';
+
+type PlayersScope = 'server' | 'global';
+
+type FilterField = 'honor' | 'loot' | 'level' | 'might' | 'mightAllTime' | 'fame' | 'castleCount' | 'allianceMight';
+
+interface FormFilters {
+  minHonor: string;
+  maxHonor: string;
+  minLoot: string;
+  maxLoot: string;
+  minLevel: string;
+  maxLevel: string;
+  minMight: string;
+  maxMight: string;
+  minAllianceMight: string;
+  maxAllianceMight: string;
+  minMightAllTime: string;
+  maxMightAllTime: string;
+  minFame: string;
+  maxFame: string;
+  castleCountMin: string;
+  castleCountMax: string;
+  allianceFilter: string;
+  protectionFilter: string;
+  banFilter: string;
+  isFiltered: boolean;
+  inactiveFilter: string;
+  ruinFilter: string;
+  playerCastleDistance: string;
+  allianceRankFilter: string[];
+}
+
+@Component({
+  selector: 'app-players',
+  standalone: true,
+  providers: [FormatNumberPipe],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [
+    NgClass,
+    FormsModule,
+    TableComponent,
+    SearchFormComponent,
+    TranslateModule,
+    PlayerTableContentComponent,
+    LucideAngularModule,
+    IconComponent,
+    IconToggleComponent,
+    NgSelectModule,
+    ModalFormGroupComponent,
+    GlobalPlayersComponent,
+  ],
+  templateUrl: './players.component.html',
+  styleUrl: './players.component.css',
+})
+export class PlayersComponent extends GenericComponent implements OnInit {
+  private static readonly RANGE_FILTER_KEYS = [
+    'minHonor',
+    'maxHonor',
+    'minMight',
+    'maxMight',
+    'minAllianceMight',
+    'maxAllianceMight',
+    'minMightAllTime',
+    'maxMightAllTime',
+    'minLoot',
+    'maxLoot',
+    'minLevel',
+    'maxLevel',
+    'minFame',
+    'maxFame',
+    'castleCountMin',
+    'castleCountMax',
+  ] as const;
+  private static readonly TRISTATE_FILTER_KEYS = [
+    'allianceFilter',
+    'protectionFilter',
+    'stormyIslandsFilter',
+    'banFilter',
+    'inactiveFilter',
+    'ruinFilter',
+  ] as const;
+  private static readonly PAGE_SIZE_STORAGE_KEY = 'playersPageSize';
+  private static readonly DEFAULT_PAGE_SIZE = 12;
+  private static readonly MAX_PAGE_SIZE = 100;
+  @ViewChild('searchForm') public searchForm!: SearchFormComponent;
+  public filtersOpened = false;
+  public readonly REALM_ORDER = ['0', '2', '1', '3'];
+  public players: Player[] = [];
+  public scope: PlayersScope = 'server';
+  public page = 1;
+  public maxPage?: number;
+  public pageSize = PlayersComponent.DEFAULT_PAGE_SIZE;
+  public pageSizeInput = PlayersComponent.DEFAULT_PAGE_SIZE;
+  public responseTime = 0;
+  public playerCount = 0;
+  public search = '';
+  public searchType: SearchType = 'player';
+  public reverse = true;
+  public sort = 'might_current';
+  public favoriePlayers: FavoritePlayer[] = [];
+  public popupIsInLoading: boolean = false;
+  public realms: KingdomRealm[] = [
+    { key: '999', label: 'Pas de filtre' },
+    { key: '0', label: 'Le Grand Empire', image: 'assets/dungeon0.png' },
+    { key: '2', label: 'Le Glacier éternel', image: 'assets/dungeon2.png' },
+    { key: '1', label: 'Les Sables brûlants', image: 'assets/dungeon1.png' },
+    { key: '3', label: 'Les Pics du feu', image: 'assets/dungeon3.png' },
+  ];
+  public validated: { [key: string]: boolean } = {};
+  public playersTableHeader: [string, string, (string | undefined)?, (boolean | undefined)?][] = [
+    ['player_name', 'Pseudonyme'],
+    ['level', 'Niveau', '/assets/lvl.png'],
+    ['might_current', 'Points de puissance', '/assets/pp1.png'],
+    ['loot_current', 'Points de pillage hebdomadaire', '/assets/loot.png'],
+    ['current_fame', 'Points de gloire', '/assets/glory.png'],
+    ['honor', 'Honneur', '/assets/honor.png'],
+    ['alliance_name', 'Alliance', '/assets/min-alliance.png', true],
+    ['', '', undefined, true],
+  ];
+  public sortByOptions: { value: string; label: string }[] = [
+    { value: 'player_name', label: 'Pseudonyme' },
+    { value: 'level', label: 'Niveau' },
+    { value: 'might_current', label: 'Points de puissance' },
+    { value: 'might_all_time', label: 'Puissance maximale atteinte' },
+    { value: 'loot_current', label: 'Points de pillage hebdomadaire' },
+    { value: 'loot_all_time', label: 'Pillage maximal atteint' },
+    { value: 'current_fame', label: 'Points de gloire' },
+    { value: 'highest_fame', label: 'Gloire maximale atteinte' },
+    { value: 'honor', label: 'Honneur' },
+    { value: 'alliance_name', label: 'Alliance' },
+    { value: 'remaining_peace_time', label: 'Protection' },
+  ];
+  public defaultPlayersTableHeaderSize = this.playersTableHeader.length;
+  public formFilters = {
+    minHonor: '',
+    maxHonor: '',
+    minMight: '',
+    maxMight: '',
+    minAllianceMight: '',
+    maxAllianceMight: '',
+    minMightAllTime: '',
+    maxMightAllTime: '',
+    minLoot: '',
+    maxLoot: '',
+    minLevel: '',
+    maxLevel: '',
+    minFame: '',
+    maxFame: '',
+    castleCountMin: '',
+    castleCountMax: '',
+    allianceFilter: '-1',
+    protectionFilter: '-1',
+    banFilter: '-1',
+    isFiltered: false,
+    inactiveFilter: '1',
+    ruinFilter: '-1',
+    playerCastleDistance: '',
+    allianceRankFilter: ['0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0'],
+    kingdomFilter: ['999'],
+    stormyIslandsFilter: '-1',
+  };
+  public defaultFormFilters!: FormFilters;
+  public readonly ArrowBigRightDash = ArrowBigRightDash;
+  public readonly serverService = inject(ServerService);
+  public displayFormValues = {
+    might: { min: '', max: '' },
+    mightAllTime: { min: '', max: '' },
+    allianceMight: { min: '', max: '' },
+    loot: { min: '', max: '' },
+    honor: { min: '', max: '' },
+    level: { min: '', max: '' },
+    fame: { min: '', max: '' },
+    castleCount: { min: '', max: '' },
+  };
+  private readonly FILTER_KEYS: FilterKeyMap<FormFilters, FilterField> = {
+    honor: { min: 'minHonor', max: 'maxHonor' },
+    loot: { min: 'minLoot', max: 'maxLoot' },
+    level: { min: 'minLevel', max: 'maxLevel' },
+    might: { min: 'minMight', max: 'maxMight' },
+    allianceMight: { min: 'minAllianceMight', max: 'maxAllianceMight' },
+    mightAllTime: { min: 'minMightAllTime', max: 'maxMightAllTime' },
+    fame: { min: 'minFame', max: 'maxFame' },
+    castleCount: { min: 'castleCountMin', max: 'castleCountMax' },
+  };
+  private readonly cdr = inject(ChangeDetectorRef);
+  private readonly localStorage = inject(LocalStorageService);
+  private readonly followService = inject(FollowService);
+  private readonly formatNumberPipe = inject(FormatNumberPipe);
+
+  constructor() {
+    super();
+    this.isInLoading = true;
+  }
+
+  public ngOnInit(): void {
+    if (globalThis.window === undefined) return;
+    if (this.route.snapshot.queryParams['scope'] === 'global') {
+      this.scope = 'global';
+      return;
+    }
+    this.pageSize = this.readStoredPageSize();
+    this.pageSizeInput = this.pageSize;
+    const sort = this.localStorage.getItem('sort');
+    if (sort && sort === 'distance' && this.formFilters.playerCastleDistance !== '') this.sort = sort;
+    const reverse = this.localStorage.getItem('reverse');
+    if (reverse === 'true') {
+      this.reverse = true;
+    }
+    const playerNameForDistance = this.localStorage.getItem(
+      'allianceDistancePlayerName_' + this.apiRestService.serverService.currentServer?.name,
+    );
+    if (playerNameForDistance) {
+      this.formFilters.playerCastleDistance = playerNameForDistance;
+      this.addHeaderTableBlock();
+    }
+    const urlParameters = this.route.snapshot.queryParams;
+    const page = urlParameters['page'] ? Number(urlParameters['page']) : 1;
+    this.page = page;
+    if (urlParameters['alliance']) {
+      this.search = urlParameters['alliance'];
+      this.isInLoading = false;
+      void this.searchAlliance(this.search);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+    } else if (urlParameters['player']) {
+      this.search = urlParameters['player'];
+      this.isInLoading = false;
+      void this.searchPlayer(this.search);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+    } else {
+      void this.init(this.page);
+    }
+    this.defaultFormFilters = structuredClone(this.formFilters);
+  }
+
+  public async switchScope(scope: PlayersScope): Promise<void> {
+    if (this.scope === scope || this.isInLoading) return;
+    this.scope = scope;
+    this.search = '';
+    this.page = 1;
+    await this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: scope === 'global' ? { scope } : {},
+    });
+    this.cdr.detectChanges();
+    if (scope === 'server') await this.init(1);
+  }
+
+  public onGenericFocus(type: BoundType, field: FilterField): void {
+    const targetValue = this.formFilters[this.FILTER_KEYS[field][type]];
+    if (targetValue == null) return;
+    this.displayFormValues[field][type] = targetValue.toString();
+  }
+
+  public onGenericInput(type: BoundType, field: FilterField, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const raw = input.value;
+    let numeric = raw === '' ? '' : Number(raw.replaceAll(/\s/g, ''));
+    if (numeric !== null && Number.isNaN(numeric)) {
+      numeric = this.utilitiesService.parseValue(raw);
+      if (numeric === 0 && raw !== '0' && raw !== '') {
+        this.displayFormValues[field][type] = raw;
+        return;
+      }
+    }
+    const filterKey = this.FILTER_KEYS[field][type];
+    (this.formFilters as any)[filterKey] = numeric.toString();
+    this.displayFormValues[field][type] = raw;
+  }
+
+  public onGenericBlur(type: BoundType, field: FilterField): void {
+    const filterKey = this.FILTER_KEYS[field][type];
+    const value = this.formFilters[filterKey];
+    this.displayFormValues[field][type] =
+      value == null || value === '' ? '' : this.utilitiesService.formatNumber(this.formatNumberPipe, Number(value));
+  }
+
+  public async nextPage(): Promise<void> {
+    if (this.isInLoading) return;
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+    this.page++;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const players = data.data;
+    this.players = this.mapPlayersFromApi(players, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public async previousPage(): Promise<void> {
+    if (this.isInLoading) return;
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+    this.page--;
+    const data = await this.getGenericData();
+    this.responseTime = data.response;
+    const players = data.data;
+    this.players = this.mapPlayersFromApi(players, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public async clickOnAlliance(allianceName: string | null): Promise<void> {
+    if (allianceName === null || (this.searchType === 'alliance' && this.search === allianceName)) return;
+    this.search = allianceName;
+    void this.searchAlliance(allianceName);
+  }
+
+  public async searchAlliance(allianceName: string): Promise<void> {
+    this.search = allianceName;
+    if (this.isInLoading) return;
+    if (this.search === '') {
+      void this.navigateTo(1).then(() => {
+        this.isInLoading = false;
+        this.cdr.detectChanges();
+      });
+    }
+    this.isInLoading = true;
+    try {
+      this.page = 1;
+      const data = await this.getGenericData();
+      this.responseTime = data.response;
+      const players = data.data;
+      this.searchType = 'alliance';
+      this.players = this.mapPlayersFromApi(players, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+    } catch {
+      this.isInLoading = false;
+      this.toastService.add(ErrorType.NO_ALLIANCE_FOUND, 5000);
+      this.cdr.detectChanges();
+    }
+  }
+
+  public onRealmChange(selectedItems: KingdomRealm[]): void {
+    if (!selectedItems || selectedItems.length === 0) {
+      this.formFilters.kingdomFilter = ['999'];
+      return;
+    }
+    const REALM_ORDER = this.REALM_ORDER;
+    const lastSelected = selectedItems.at(-1);
+    if (lastSelected?.key === '999') {
+      this.formFilters.kingdomFilter = ['999'];
+      return;
+    }
+    let currentKeys = selectedItems.map((index) => index.key).filter((k) => k !== '999');
+    let finalKeysSet = new Set<string>();
+    currentKeys.forEach((key) => {
+      const index = REALM_ORDER.indexOf(key);
+      if (index !== -1) {
+        for (let index_ = 0; index_ <= index; index_++) {
+          finalKeysSet.add(REALM_ORDER[index_]);
+        }
+      }
+    });
+    this.formFilters.kingdomFilter = [...finalKeysSet].sort((a, b) => REALM_ORDER.indexOf(a) - REALM_ORDER.indexOf(b));
+  }
+
+  public async searchPlayer(playerName: string): Promise<void> {
+    this.search = playerName;
+    if (this.isInLoading) return;
+    this.searchType = 'player';
+    if (this.search === '') {
+      await this.navigateTo(1);
+      this.cdr.detectChanges();
+      return;
+    }
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+    const response = await this.apiRestService.getPlayer(this.search);
+    if (response.success === false || response.error) {
+      this.toastService.add(ErrorType.NO_PLAYER_FOUND, 5000);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+      return;
+    }
+    const player = response.data;
+    this.players = this.mapPlayersFromApi(
+      {
+        players: [player],
+        duration: '',
+        pagination: {
+          total_pages: 1,
+          current_items_count: 1,
+          current_page: 1,
+          total_items_count: 1,
+        },
+      },
+      () => 1,
+    );
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public async navigateTo(page: number): Promise<void> {
+    if (this.isInLoading) return;
+    this.isInLoading = true;
+    this.page = page;
+    const players = await this.getGenericData();
+    this.responseTime = players.response;
+    this.players = this.mapPlayersFromApi(players.data, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public visiblePages(): number[] {
+    if (!this.maxPage) return [];
+    let pageCutLow = Math.max(1, this.page - 1);
+    let pageCutHigh = Math.min(this.maxPage, this.page + 1);
+    if (this.page === 1) pageCutHigh += 2;
+    if (this.page === 2) pageCutHigh += 1;
+    if (this.page === this.maxPage) pageCutLow -= 2;
+    if (this.page === this.maxPage - 1) pageCutLow -= 1;
+    return Array.from({ length: pageCutHigh - pageCutLow + 1 }, (_, index) => pageCutLow + index);
+  }
+
+  public allPages(): number[] {
+    return Array.from({ length: this.maxPage || 1 }, (_, index) => index + 1);
+  }
+
+  public onAllianceRankFilterChanged(index: number): void {
+    this.formFilters.allianceRankFilter[index] = this.formFilters.allianceRankFilter[index] === '0' ? '1' : '0';
+  }
+
+  public areFiltersChanged(): boolean {
+    return JSON.stringify(this.formFilters) !== JSON.stringify(this.defaultFormFilters);
+  }
+
+  public async applyFilters(): Promise<void> {
+    this.popupIsInLoading = true;
+    this.isInLoading = true;
+    this.page = 1;
+    this.applyPageSize();
+    this.cdr.detectChanges();
+    if (this.formFilters.playerCastleDistance === '') {
+      this.resetDistanceColumn();
+    } else {
+      await this.onAddDistanceColumn();
+    }
+    await this.init();
+    this.searchForm.updateNbFilterActivated();
+    this.popupIsInLoading = false;
+  }
+
+  public async saveFilters(): Promise<void> {
+    this.validateFilters('saveFilters');
+    const filtersToSave = {
+      ...this.formFilters,
+      playerCastleDistance: this.formFilters.playerCastleDistance,
+    };
+    this.localStorage.setItem(
+      'playersFilters_' + this.apiRestService.serverService.currentServer?.name,
+      JSON.stringify(filtersToSave),
+    );
+  }
+
+  public updateDisplayFormValues(): void {
+    this.displayFormValues = {
+      might: { min: this.formFilters.minMight, max: this.formFilters.maxMight },
+      allianceMight: { min: this.formFilters.minAllianceMight, max: this.formFilters.maxAllianceMight },
+      mightAllTime: { min: this.formFilters.minMightAllTime, max: this.formFilters.maxMightAllTime },
+      loot: { min: this.formFilters.minLoot, max: this.formFilters.maxLoot },
+      honor: { min: this.formFilters.minHonor, max: this.formFilters.maxHonor },
+      level: { min: this.formFilters.minLevel, max: this.formFilters.maxLevel },
+      fame: { min: (this.formFilters as any).minFame, max: (this.formFilters as any).maxFame },
+      castleCount: { min: this.formFilters.castleCountMin, max: this.formFilters.castleCountMax },
+    };
+  }
+
+  public getDungeonImage(kid: number): string {
+    switch (kid) {
+      case 1: {
+        return 'assets/dungeon1.png';
+      }
+      case 2: {
+        return 'assets/dungeon2.png';
+      }
+      case 3: {
+        return 'assets/dungeon3.png';
+      }
+      default: {
+        return 'assets/dungeon_default.png';
+      }
+    }
+  }
+
+  public async resetFilters(): Promise<void> {
+    this.validateFilters('resetFilters');
+    Object.assign(this.formFilters, this.defaultFormFilters);
+    this.updateDisplayFormValues();
+  }
+
+  public async loadFiltersFromLocalStorage(): Promise<void> {
+    this.validateFilters('loadFilters');
+    const savedFiltersString = this.localStorage.getItem(
+      'playersFilters_' + this.apiRestService.serverService.currentServer?.name,
+    );
+    if (!savedFiltersString) return;
+    let savedFilters = JSON.parse(savedFiltersString) as FormFilters;
+    if (this.formFilters.playerCastleDistance === '') {
+      this.resetDistanceColumn();
+    } else {
+      await this.onAddDistanceColumn();
+    }
+    Object.assign(this.formFilters, savedFilters);
+    this.updateDisplayFormValues();
+    this.cdr.detectChanges();
+  }
+
+  public validateFilters(action: 'saveFilters' | 'loadFilters' | 'resetFilters'): void {
+    this.validated[action] = true;
+    setTimeout(() => {
+      this.validated[action] = false;
+      this.cdr.detectChanges();
+    }, 2000);
+  }
+
+  public async onAddDistanceColumn(): Promise<void> {
+    if (!this.formFilters.playerCastleDistance?.trim()) return;
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+    this.localStorage.setItem(
+      'allianceDistancePlayerName_' + this.apiRestService.serverService.currentServer?.name,
+      this.formFilters.playerCastleDistance,
+    );
+    const data = await this.getGenericData();
+    const players = data.data;
+    this.responseTime = data.response;
+    this.players = this.mapPlayersFromApi(players, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+    this.isInLoading = false;
+    this.addHeaderTableBlock();
+    this.isInLoading = false;
+    this.cdr.detectChanges();
+  }
+
+  public resetDistanceColumn(): void {
+    this.formFilters.playerCastleDistance = '';
+    if (this.sort === 'distance') {
+      this.sort = 'might_current';
+      this.reverse = true;
+      this.localStorage.setItem('sort', this.sort);
+      this.localStorage.setItem('reverse', this.reverse ? 'true' : 'false');
+    }
+    this.localStorage.removeItem('allianceDistancePlayerName_' + this.apiRestService.serverService.currentServer?.name);
+    this.cdr.detectChanges();
+    if (this.playersTableHeader.length === 9) {
+      this.playersTableHeader.splice(-3, 1);
+      this.cdr.detectChanges();
+    }
+  }
+
+  public get areFiltersSavedInLocalStorage(): boolean {
+    return (
+      this.localStorage.getItem('playersFilters_' + this.apiRestService.serverService.currentServer?.name) !== null
+    );
+  }
+
+  public async sortPlayers(sort: string): Promise<void> {
+    if (globalThis.window === undefined) return;
+    if (this.isInLoading || (this.searchType === 'player' && this.search !== '')) return;
+    this.isInLoading = true;
+    this.cdr.detectChanges();
+    if (this.sort === sort) {
+      this.reverse = !this.reverse;
+    } else {
+      this.reverse = false;
+      this.sort = sort;
+    }
+    this.localStorage.setItem('sort', this.sort);
+    this.localStorage.setItem('reverse', this.reverse ? 'true' : 'false');
+    try {
+      const data = await this.getGenericData();
+      const players = data.data;
+      this.responseTime = data.response;
+      this.players = this.mapPlayersFromApi(players, (index: number) => (this.page - 1) * this.pageSize + index + 1);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+    } catch {
+      this.isInLoading = false;
+      this.toastService.add(ErrorType.ERROR_OCCURRED, 5000);
+      this.cdr.detectChanges();
+    }
+  }
+
+  public resetPageSize(): void {
+    this.pageSizeInput = PlayersComponent.DEFAULT_PAGE_SIZE;
+  }
+
+  public toggleFavorite(player: Player): void {
+    this.followService.togglePlayer(player.playerId);
+    player.isFavorite = this.followService.isFollowingPlayer(player.playerId);
+    this.cdr.detectChanges();
+  }
+
+  public exportData(): void {
+    const headers = [
+      'Rank',
+      'Player Name',
+      'Alliance ID',
+      'Alliance Name',
+      'Alliance Rank',
+      'Level',
+      'Current Might',
+      'Highest Might',
+      'Current Loot',
+      'Highest Loot',
+      'Current Glory',
+      'Highest Glory',
+      'Current Honor',
+      'Highest Honor',
+      'Peace Disabled At',
+      'Distance (m)',
+    ];
+    const rows: any[][] = [];
+    this.players.forEach((player) => {
+      const row = [
+        player.rank,
+        this.utilitiesService.escapeCsv(player.playerName),
+        Number(player.allianceId),
+        this.utilitiesService.escapeCsv(player.allianceName),
+        `url=/assets/alliance_ranks/${player.allianceRank}.png`,
+        this.utilitiesService.constructPlayerLevel(player.level ?? 0, player.legendaryLevel ?? 0),
+        Number(player.mightCurrent),
+        Number(player.mightAllTime),
+        Number(player.lootCurrent),
+        Number(player.lootAllTime),
+        Number(player.currentFame),
+        Number(player.highestFame),
+        Number(player.honor),
+        Number(player.maxHonor),
+        player.peaceDisabledAt
+          ? this.utilitiesService.escapeCsv(new Date(player.peaceDisabledAt).toLocaleString())
+          : '',
+        Number(player.distance ?? 0),
+      ];
+      rows.push(row);
+    });
+    void this.utilitiesService.exportDataXlsx(
+      'Players',
+      headers,
+      rows,
+      `players_${this.apiRestService.serverService.currentServer?.name || 'server'}_page_${this.page}_${new Date().toISOString()}.xlsx`,
+    );
+  }
+
+  private applyPageSize(): void {
+    this.pageSize = this.clampPageSize(this.pageSizeInput);
+    this.pageSizeInput = this.pageSize;
+    if (this.pageSize === PlayersComponent.DEFAULT_PAGE_SIZE) {
+      this.localStorage.removeItem(PlayersComponent.PAGE_SIZE_STORAGE_KEY);
+    } else {
+      this.localStorage.setItem(PlayersComponent.PAGE_SIZE_STORAGE_KEY, String(this.pageSize));
+    }
+  }
+
+  private readStoredPageSize(): number {
+    const stored = this.localStorage.getItem(PlayersComponent.PAGE_SIZE_STORAGE_KEY);
+    return stored ? this.clampPageSize(Number.parseInt(stored, 10)) : PlayersComponent.DEFAULT_PAGE_SIZE;
+  }
+
+  private clampPageSize(value: number): number {
+    if (!Number.isFinite(value)) return PlayersComponent.DEFAULT_PAGE_SIZE;
+    return Math.min(PlayersComponent.MAX_PAGE_SIZE, Math.max(1, Math.trunc(value)));
+  }
+
+  private addHeaderTableBlock(): void {
+    if (this.playersTableHeader.length === 8) {
+      const block: [string, string, (string | undefined)?, (boolean | undefined)?] = [
+        'distance',
+        'Distance (m)',
+        undefined,
+        undefined,
+      ];
+      this.playersTableHeader.splice(-2, 0, block);
+    }
+  }
+
+  private mapPlayersFromApi(players: ApiPlayersResponse, rankFunction: (rank: number) => number): Player[] {
+    if (players.pagination) {
+      this.maxPage = players.pagination.total_pages;
+      this.playerCount = players.pagination.total_items_count;
+    } else {
+      this.maxPage = 1;
+      this.playerCount = 1;
+    }
+    void this.updateGenericParamsInUrl(
+      {
+        page: this.page,
+        player: this.searchType === 'player' ? this.search : undefined,
+        alliance: this.searchType === 'alliance' ? this.search : undefined,
+      },
+      { page: 1, player: '', alliance: '' },
+    );
+    const favoriePlayers = this.followService.followedPlayers();
+    return players.players.map((player, index) => {
+      return {
+        rank: rankFunction(index),
+        playerId: player.player_id,
+        playerName: player.player_name,
+        allianceName: player.alliance_name,
+        allianceId: player.alliance_id,
+        allianceRank: player.alliance_rank,
+        mightCurrent: player.might_current,
+        mightAllTime: player.might_all_time,
+        lootCurrent: player.loot_current ?? 0,
+        lootAllTime: player.loot_all_time ?? 0,
+        isFavorite: favoriePlayers.includes(player.player_id.toString()),
+        honor: player.honor,
+        maxHonor: player.max_honor,
+        peaceDisabledAt: player.peace_disabled_at,
+        updatedAt: player.updated_at,
+        level: player.level,
+        legendaryLevel: player.legendary_level,
+        currentFame: player.current_fame,
+        highestFame: player.highest_fame,
+        distance: player.calculated_distance,
+        remainingRelocationTime: player.remaining_relocation_time,
+        allianceHistory: player.alliance_history,
+      };
+    });
+  }
+
+  private constructFilters(): Record<string, string | number> {
+    const filters: Record<string, string | number> = {};
+    for (const key of PlayersComponent.RANGE_FILTER_KEYS) {
+      if (this.formFilters[key]) filters[key] = this.formFilters[key];
+    }
+    // -1 is the "no preference" option of a three-state select, so it is not a filter
+    for (const key of PlayersComponent.TRISTATE_FILTER_KEYS) {
+      if (this.formFilters[key] !== '-1') filters[key] = this.formFilters[key];
+    }
+    if (this.formFilters.playerCastleDistance) filters['playerNameForDistance'] = this.formFilters.playerCastleDistance;
+    if (this.formFilters.allianceRankFilter.includes('1')) {
+      filters['allianceRankFilter'] = this.formFilters.allianceRankFilter
+        .map((value, index) => (value === '1' ? index : null))
+        .filter((value) => value !== null)
+        .join(',');
+    }
+    if (this.formFilters.kingdomFilter.length > 0) filters['kingdomFilter'] = this.formFilters.kingdomFilter.join(',');
+    this.formFilters.isFiltered = Object.keys(filters).length > 0;
+    return filters;
+  }
+
+  private async getGenericData(): Promise<{ data: ApiPlayersResponse; response: number }> {
+    try {
+      return await this.apiRestService.getGenericData(
+        this.apiRestService.getPlayers.bind(this.apiRestService),
+        this.page,
+        this.sort,
+        this.reverse ? 'DESC' : 'ASC',
+        this.search ?? undefined,
+        this.constructFilters(),
+        this.pageSize,
+      );
+    } catch (error: unknown) {
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+      throw error; // Re-throw the error to be handled in the calling function
+    }
+  }
+
+  private structuredPlayersData(players: ApiPlayerSearchResponse[]): void {
+    if (this.isBrowser && players.length > 0) {
+      this.addStructuredPlayersData(
+        players.map((player) => ({
+          name: player.player_name,
+          url: `gge-tracker.com/player/${player.player_id}`,
+          alliance: player.alliance_name || '',
+          might: player.might_current,
+          level: this.utilitiesService.constructPlayerLevel(player.level || 0, player.legendary_level || 0),
+        })),
+      );
+    }
+  }
+
+  private async init(page = 1): Promise<void> {
+    try {
+      this.defaultFormFilters = structuredClone(this.formFilters);
+      this.page = page;
+      const players = await this.getGenericData();
+      this.structuredPlayersData(players.data.players);
+      this.responseTime = players.response;
+      this.maxPage = players.data.pagination.total_pages;
+      this.players = this.mapPlayersFromApi(players.data, (index: number) => (page - 1) * this.pageSize + index + 1);
+      this.isInLoading = false;
+      this.cdr.detectChanges();
+    } catch {
+      this.isInLoading = false;
+      if (this.formFilters.playerCastleDistance === '') {
+        this.toastService.add(ErrorType.ERROR_OCCURRED, 5000);
+      } else {
+        this.toastService.add(ErrorType.NO_PLAYER_FOUND, 5000);
+        this.formFilters.playerCastleDistance = '';
+        this.localStorage.removeItem(
+          'allianceDistancePlayerName_' + this.apiRestService.serverService.currentServer?.name,
+        );
+        this.resetDistanceColumn();
+      }
+      this.cdr.detectChanges();
+    }
+  }
+}

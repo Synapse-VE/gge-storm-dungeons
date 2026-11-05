@@ -1,0 +1,203 @@
+<app-stats-panel [title]="title()" [subtitle]="subtitle() ?? ''" [accent]="backgroundColour()"
+  [bannerImage]="backgroundIconImage()">
+  <ul class="nav nav-tabs mt-3 ps-3 align-items-center">
+    @for (chart of charts() | keyvalue: originalOrder; track chart.key) {
+      <li class="nav-item">
+        <button class="nav-link" (click)="changeTab(chart.key) " [ngClass]="selectedTab === chart.key ? 'active' : ''">
+          <i [ngClass]="getIcon(chart.key)"></i>
+        {{ chart.key | translate}}</button>
+      </li>
+    }
+    @if (stats()) {
+      <li class="nav-item">
+        <button class="nav-link" (click)="changeTab(STATS_TAB_KEY)" [ngClass]="selectedTab === STATS_TAB_KEY ? 'active' : ''">
+          <i class="fas fa-tachometer-alt"></i>
+          {{ 'Indicateurs' | translate }}
+        </button>
+      </li>
+    }
+    @if (isOnSeriesTab) {
+      <li class="nav-item ms-auto pe-3" [style.--event-scope-accent]="backgroundColour()">
+        @if (scopeShown() < scopeTotal()) {
+          <button type="button" class="event-scope" (click)="requestFullHistory()"
+            (keyup.enter)="requestFullHistory()" [disabled]="isLoadingHistory()"
+            [title]="'Afficher toutes les séries' | translate"
+            [attr.aria-label]="'Afficher toutes les séries' | translate">
+            @if (isLoadingHistory()) {
+              <i class="fas fa-spinner fa-spin"></i>
+            } @else {
+              <i class="fas fa-clock-rotate-left"></i>
+            }
+            <span class="event-scope-count">{{ scopeShown() }}</span>
+            <span class="event-scope-total">/ {{ scopeTotal() }}</span>
+          </button>
+        } @else {
+          <span class="event-scope event-scope-complete" [title]="'Événements' | translate">
+            <i class="fas fa-check"></i>
+            <span class="event-scope-count">{{ scopeTotal() }}</span>
+          </span>
+        }
+      </li>
+    }
+  </ul>
+  @for (chart of charts() | keyvalue; track chart.key) {
+    <div class="mx-3" [class]="chart.value?.chart?.type ?? ''"
+      [ngClass]="selectedTab === chart.key ? 'd-block' : 'd-none'">
+      @if (!isReady) {
+        <ng-container *ngTemplateOutlet="loadingChart"></ng-container>
+      }
+      @if (chart.value && chart.value.series && selectedTab === chart.key && isBrowser) {
+        <app-charts-wrapper #chartComp
+          [ngClass]="isReady ? '' : 'opacity-0'" [series]="chart.value.series" [annotations]="chart.value.annotations || {}"
+          [chart]="chart.value.chart" [xaxis]="chart.value.xaxis" [yaxis]="chart.value.yaxis"
+          [dataLabels]="chart.value.dataLabels" [plotOptions]="chart.value.plotOptions" [labels]="chart.value.labels || []"
+          [grid]="chart.value.grid" [colors]="chart.value.colors" [markers]="chart.value.markers || {}"
+          [fill]="chart.value.fill" [stroke]="chart.value.stroke" [title]="chart.value.title"
+          [tooltip]="chart.value.tooltip" [legend]="chart.value.legend"
+        (chartComponentOutput)="onChartComponentInitialized($event)"></app-charts-wrapper>
+      }
+      @if (chart.value && chart.value.series && selectedTab === chart.key && isBrowser && isReady) {
+        <div class="text-center"
+          >
+          @if (isWeekly()) {
+            <div class="btn-group">
+              <button class="gge-btn light-yellow btn-sm" (click)="changePeriod('day')" (keyup.enter)="changePeriod('day')"
+              [ngClass]="period === 'day' ? 'active' : ''">{{ 'Dernières 24h' | translate }}</button>
+              <button class="gge-btn light-yellow btn-sm" (click)="changePeriod('week')" (keyup.enter)="changePeriod('week')"
+              [ngClass]="period === 'week' ? 'active' : ''">{{ 'Derniers 7 jours' | translate }}</button>
+              <button class="gge-btn light-yellow btn-sm" (click)="changePeriod('month')"
+                (keyup.enter)="changePeriod('month')" [ngClass]="period === 'month' ? 'active' : ''">{{ 'Derniers 30 jours' |
+              translate }}</button>
+              <button class="gge-btn light-yellow btn-sm" (click)="changePeriod('year')" (keyup.enter)="changePeriod('year')"
+              [ngClass]="period === 'year' ? 'active' : ''">{{ 'Tous' | translate }}</button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+  @if (data().length > 0) {
+    <div class="mx-3 cadre-table-scroll" [ngClass]="selectedTab === 'Données' ? 'd-block' : 'd-none'">
+      @if (onePlayerOnly()) {
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{{ 'Date' | translate }}</th>
+              <th>{{ dataName() | translate }}</th>
+              <th>{{ 'Variations' | translate}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (entry of data(); track $index; let i = $index) {
+              <tr>
+                <td>{{ i + 1 }}</td>
+                <td>{{ entry.date | date: ('Date_2' | translate) }}</td>
+                <td>
+                  {{ entry.point | formatNumber }}
+                  <i class="fas fa-info-circle" [title]="entry.point + ' ' + ('points' | translate)"></i>
+                </td>
+                <td>
+                  @if (entry.variation > 0) {
+                    <span class="badge bg-success"
+                    [title]="entry.variation + ' ' + ('points' | translate)">+{{ entry.variation | formatNumber }}</span>
+                  }
+                  @if (entry.variation < 0) {
+                    <span class="badge bg-danger"
+                    [title]="entry.variation + ' ' + ('points' | translate)">{{ entry.variation | formatNumber }}</span>
+                  }
+                  @if (entry.variation === 0) {
+                    <span class="badge bg-secondary">-</span>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <table class="table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{{ 'Joueur' | translate }}</th>
+              <th>{{ 'Points' | translate }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (entry of data(); track $index; let i = $index) {
+              <tr>
+                <td>{{ i + 1 }}</td>
+                <td><span class="data-player-dot" [style.background]="getPlayerColor(entry)"></span>{{ entry.playerName }}</td>
+                <td>
+                  {{ entry.point | formatNumber }}
+                  <i class="fas fa-info-circle" [title]="entry.point + ' ' + ('points' | translate)"></i>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+  }
+
+  @if (stats(); as kpis) {
+    @if (selectedTab === STATS_TAB_KEY) {
+      <div class="event-kpis" [style.--kpi-accent]="backgroundColour()">
+        <section class="event-kpi event-kpi-hero">
+          <span class="event-kpi-chip"><i class="fas fa-trophy"></i></span>
+          <span class="event-kpi-label">{{ 'Score moyen' | translate }}</span>
+          <div class="event-kpi-value">{{ kpis.averageScore | formatNumber }}</div>
+          <div class="event-kpi-detail">
+            {{ 'Sur 0 événements joués' | translate: { count: kpis.participatingEvents } }}
+          </div>
+        </section>
+
+        <section class="event-kpi">
+          <span class="event-kpi-chip"><i class="fas fa-calendar-check"></i></span>
+          <span class="event-kpi-label">{{ 'Participation' | translate }}</span>
+          @if (kpis.totalCompletedEvents === 0) {
+            <div class="event-kpi-value">–</div>
+            <div class="event-kpi-detail"></div>
+          } @else {
+            <div class="event-kpi-value">
+              {{ kpis.participatingEvents }}<span class="event-kpi-value-total"> / {{ kpis.totalCompletedEvents }}</span>
+            </div>
+            <div class="event-kpi-detail">
+              <div class="event-kpi-bar" role="progressbar" [attr.aria-valuenow]="kpis.participationRate"
+                aria-valuemin="0" aria-valuemax="100">
+                <span [style.width.%]="kpis.participationRate"></span>
+              </div>
+              <span class="event-kpi-rate">{{ kpis.participationRate }}%</span>
+            </div>
+          }
+        </section>
+
+        <section class="event-kpi">
+          <span class="event-kpi-chip"><i class="fas fa-chart-line"></i></span>
+          <span class="event-kpi-label">{{ 'Tendance récente' | translate }}</span>
+          @if (kpis.trendPercent === null) {
+            <div class="event-kpi-value">–</div>
+          } @else {
+            <div class="event-kpi-value event-kpi-trend"
+              [class.is-up]="kpis.trendPercent > 5" [class.is-down]="kpis.trendPercent < -5">
+              <i class="fas" [class.fa-arrow-trend-up]="kpis.trendPercent > 5"
+                [class.fa-arrow-trend-down]="kpis.trendPercent < -5"
+                [class.fa-arrows-left-right]="kpis.trendPercent >= -5 && kpis.trendPercent <= 5"></i>
+              {{ kpis.trendPercent > 0 ? '+' : '' }}{{ kpis.trendPercent }}%
+            </div>
+          }
+          <div class="event-kpi-detail">{{ '3 derniers vs. moyenne' | translate }}</div>
+        </section>
+      </div>
+    }
+  }
+
+  <ng-content></ng-content>
+</app-stats-panel>
+
+
+<ng-template #loadingChart>
+  <div class="text-center spinner-container">
+    <i class="fas fa-spinner fa-spin"></i>
+  </div>
+</ng-template>

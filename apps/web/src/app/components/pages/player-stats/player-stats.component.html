@@ -1,0 +1,933 @@
+<div class="player-stats-view position-relative">
+  <app-share-link #playerShare="shareLink" subject="player" [subjectId]="playerId ?? 0" [name]="playerName ?? ''" />
+  @if (!isInLoading) {
+  <div class="d-none d-md-block">
+    <div class="btn-exit right">
+      <a class="btn btn-primary mt-3 me-2" [routerLink]="['/compare', 'players']" [queryParams]="{ a: playerId }">
+        <i class="fas fa-scale-balanced"></i>
+        {{ 'Comparer' | translate }}</a>
+      @if (playerId) {
+      <button type="button" class="btn btn-primary mt-3 me-2" aria-haspopup="dialog" (click)="playerShare.open()">
+        <i class="fas fa-share-nodes"></i>
+        {{ 'Partager' | translate }}</button>
+      }
+      @if (!isInFavorites()) {
+      <button class="btn btn-primary mt-3 me-2" (click)="addPlayerToFavorites()">
+        <i class="fas fa-star"></i>
+        {{ 'follow.follow' | translate }}</button>
+      } @else {
+      <button class="btn btn-primary mt-3 me-2" (click)="removePlayerFromFavorites()" [attr.aria-pressed]="true">
+        <i class="fas fa-star"></i>
+        {{ 'follow.unfollow' | translate }}</button>
+      }
+      @if (isMe()) {
+      <span class="btn btn-primary mt-3 player-me-badge">
+        <i class="fas fa-user-check"></i>
+        {{ 'follow.is-me' | translate }}</span>
+      } @else {
+      <button class="btn btn-primary mt-3" (click)="setAsMe()">
+        <i class="fas fa-user"></i>
+        {{ 'home.me-submit' | translate }}</button>
+      }
+    </div>
+  </div>
+  }
+  @if (!isInLoading) {
+  <app-layered-scene scene="scouting" class="player-stats-scene" />
+  <div class="position-relative player-stats-container">
+    <div class="position-relative player-hero d-flex flex-column justify-content-center"
+      [ngClass]="{'d-none': !playerName}">
+      <div class="player-nameplate mx-auto">
+        <span class="player-nameplate-name">{{ playerName }}</span>
+        <div id="allianceList">
+          <a [routerLink]="['/', 'castles']" [queryParams]="{ player: playerId, search: playerName }" [title]="'Voir les châteaux' | translate">
+            <img src="/assets/icon_castles.png" width="50" [alt]="'Paramètres' | translate" class="img-fluid mt-3">
+          </a>
+          <div class="d-inline-block alliance-more-info position-relative"
+            [attr.data-updates]="allianceUpdates!.length-1">
+            <img src="/assets/icon_alliance.png" width="50" [title]="'Voir l\'historique des alliances' | translate"
+              class="img-fluid mt-3" alt="Alliance" role="button" tabindex="0"
+              (click)="openAllianceHistory()" (keydown.enter)="openAllianceHistory()">
+          </div>
+          @if (playerUpdates && playerUpdates.length > 1) {
+          <div class="d-inline-block alliance-more-info position-relative"
+            [attr.data-updates]="playerUpdates!.length-1">
+            <img src="/assets/icon_name.png" width="50"
+              [title]="'Voir l\'historique des pseudonymes du joueur' | translate" class="img-fluid mt-3"
+              [alt]="'Pseudonyme' | translate" data-bs-toggle="modal" data-bs-target="#playerModal">
+          </div>
+          }
+          @if (stats && stats.peaceDisabledAt) {
+          <div class="d-inline-block alliance-more-info position-relative" [attr.data-updates]="peaceDisabledAtInDays">
+            <img src="/assets/icon_peace.png" width="50"
+              [title]="('Actuellement en protection Fin le' | translate) + ' ' + (stats.peaceDisabledAt | date: ('Date_1' | translate))"
+              class="img-fluid mt-3" [alt]="'Protection' | translate">
+          </div>
+          }
+        </div>
+      </div>
+      @if (playerId) {
+      <div class="d-md-none player-share-row">
+        <button type="button" class="player-share-pill" aria-haspopup="dialog" (click)="playerShare.open()">
+          <i class="fas fa-share-nodes"></i>
+          <span class="ms-1">{{ 'Partager' | translate }}</span>
+        </button>
+        <button type="button" class="player-share-pill" [attr.aria-pressed]="isInFavorites()"
+          (click)="isInFavorites() ? removePlayerFromFavorites() : addPlayerToFavorites()">
+          <i class="fas fa-star"></i>
+          <span class="ms-1">{{ (isInFavorites() ? 'follow.unfollow' : 'follow.follow') | translate }}</span>
+        </button>
+        @if (!isMe()) {
+          <button type="button" class="player-share-pill" (click)="setAsMe()">
+            <i class="fas fa-user"></i>
+            <span class="ms-1">{{ 'home.me-submit' | translate }}</span>
+          </button>
+        }
+      </div>
+      }
+      <div class="container-fluid mt-3 leaderboard d-flex flex-wrap justify-content-around text-center">
+        @for (event of events; track event) {
+        <div class="card event-card m-2">
+          @if (getScoreboardFromEvent(event)) {
+          <div class="card-body d-flex flex-column justify-content-between">
+            <h5 class="card-title"><img src="/assets/star.png" alt=""><span class="visually-hidden">Top 3</span></h5>
+            <div class="card-content d-flex align-items-center">
+              <div class="img-container me-3">
+                <img [src]="'/assets/event-logo-id-' + event + '.png'" class="img-fluid" alt="Event" width="90"
+                  height="90" [title]="getEventName(event)">
+              </div>
+              <div class="event-details">
+                <p class="card-text">
+                  <span class="highlight-hours">{{ getScoreboardFromEvent(event) }}h</span>
+                  &nbsp;{{ 'dans le top 3 du serveur' | translate }}
+                </p>
+              </div>
+            </div>
+          </div>
+          }
+        </div>
+        }
+      </div>
+    </div>
+    @if (playerId && isBrowser) {
+    <div class="container-fluid mt-3" style="margin-bottom: 70px;">
+      <div class="row g-3 mb-3 mt-1">
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/pp3.png" [alt]="'Points de puissance' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Puissance' | translate }}</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ (animatedStats['mightCurrent'] || 0) |
+              formatNumber }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/honor2.png" [alt]="'Honneur' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Honneur' | translate }}</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ animatedStats['honor'] }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/ranking.png" [alt]="'Classement' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Classement' | translate }} ({{ stats.server }})</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ (animatedStats['serverRank'] || 0) |
+              formatNumber }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/ranking.png" [alt]="'Classement mondial' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Classement mondial' | translate }}</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ (animatedStats['globalRank'] || 0) |
+              formatNumber }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/lvl.png" [alt]="'Niveau' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Niveau' | translate }}</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ (animatedStats['totalLevel'] || 0) |
+              level }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+        <div class="col-6 col-md-4 col-xl">
+          <div class="stat-card text-center">
+            <div class="stat-icon">
+              <img src="/assets/list-item.png" [alt]="'Nombre de chateaux' | translate">
+            </div>
+            @if (stats) {
+            <div class="stat-title">{{ 'Nombre de chateaux' | translate }}</div>
+            }
+            @if (stats) {
+            <div class="stat-value">{{ (animatedStats['totalCastles'] || 0) |
+              formatNumber }}</div>
+            } @else {
+            <div class="text-center spinner-container">
+              <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            }
+          </div>
+        </div>
+      </div>
+      <div class="tabs-container" #tabsContainer>
+        @for (tab of tabs; track tab) {
+        <button class="tab-button" (click)="updateTab(tab.key)" [ngClass]="{'active': currentTab === tab.key}">
+          @if (tab.assetIcon) {
+          <img [src]="'/assets/' + tab.assetIcon" width="24" height="24" [alt]="tab.label | translate">
+          }
+          <span class="d-none d-lg-inline">&nbsp;{{ tab.label | translate }}</span>
+        </button>
+        }
+      </div>
+      @if (currentTab === 'overview') {
+      <div class="tab-content">
+        <div class="row">
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="might">
+            @if (charts['might'] && chartVisibles.might) {
+            <app-player-stats-card [charts]="{ 'Graphique': charts['might'] }" [data]="[]"
+              [title]="'Points de puissance' | translate" [dataName]="'Points de puissance' | translate"
+              [backgroundIconImage]="'/assets/banner-pp.png'" [needSpecialLoader]="true"
+              [eventName]="'player_might_history'" [isWeekly]="true" [playerId]="playerId"
+              (changePeriodOutput)="onMightPeriodChange($event)"
+              [backgroundColour]="'rgb(255 230 35)'"></app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'might',
+              title: 'Points de puissance' | translate,
+              colour: 'rgb(255 230 35)'
+            }"></ng-container>
+            }
+          </div>
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="loot">
+            @if (charts['loot'] && chartVisibles.loot) {
+            <app-player-stats-card [charts]="eventCharts['loot'] ?? { 'Graphique': charts['loot'] }" [data]="[]"
+              [title]="'Pillage hebdomadaire' | translate"
+              [dataName]="'Points de pillage' | translate"
+              [playerId]="playerId" [eventName]="'player_loot_history'"
+              [backgroundIconImage]="'/assets/banner-loot.png'" [backgroundColour]="'#e7a220'"></app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'loot',
+              title: 'Pillage hebdomadaire' | translate,
+              colour: '#e7a220'
+            }"></ng-container>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="warRealms">
+            @if (eventCharts['warRealms'] && chartVisibles.warRealms) {
+            <app-player-stats-card [charts]="eventCharts['warRealms']" [data]="[]"
+              [title]="'Guerre des royaumes' | translate" [playerId]="playerId"
+              [eventName]="'player_event_war_realms_history'" (fullHistoryRequested)="loadFullHistory('warRealms')"
+              [scopeShown]="drawnSeriesCount('warRealms')" [scopeTotal]="totalOccurrences('warRealms')"
+              [isLoadingHistory]="seriesState['warRealms'] === 'loading'"
+              [dataName]="'Points de guerre des royaumes' | translate"
+              [backgroundIconImage]="'/assets/banner-realm.png'"
+              [backgroundColour]="'rgb(216 182 255)'"
+              [stats]="eventStats['warRealms']">
+            </app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'warRealms',
+              title: 'Guerre des royaumes' | translate,
+              colour: 'rgb(216 182 255)'
+            }"></ng-container>
+            }
+          </div>
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="bloodcrow">
+            @if (eventCharts['bloodcrow'] && chartVisibles.bloodcrow) {
+            <app-player-stats-card [charts]="eventCharts['bloodcrow']" [data]="[]"
+              [title]="'Corbeaux de sang' | translate" [playerId]="playerId"
+              [eventName]="'player_event_bloodcrow_history'" (fullHistoryRequested)="loadFullHistory('bloodcrow')"
+              [scopeShown]="drawnSeriesCount('bloodcrow')" [scopeTotal]="totalOccurrences('bloodcrow')"
+              [isLoadingHistory]="seriesState['bloodcrow'] === 'loading'"
+              [dataName]="'Points de corbeaux de sang' | translate"
+              [backgroundIconImage]="'/assets/banner-bloodcrow.png'"
+              [backgroundColour]="'rgb(216 182 255)'"
+              [stats]="eventStats['bloodcrow']">
+            </app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'bloodcrow',
+              title: 'Corbeaux de sang' | translate,
+              colour: 'rgb(216 182 255)'
+            }"></ng-container>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="berimondKingdom">
+            @if (eventCharts['berimondKingdom'] && chartVisibles.berimondKingdom) {
+            <app-player-stats-card [charts]="eventCharts['berimondKingdom']" [data]="[]"
+              [title]="'Bataille de Berimond' | translate" [playerId]="playerId"
+              [eventName]="'player_event_berimond_kingdom_history'" (fullHistoryRequested)="loadFullHistory('berimondKingdom')"
+              [scopeShown]="drawnSeriesCount('berimondKingdom')" [scopeTotal]="totalOccurrences('berimondKingdom')"
+              [isLoadingHistory]="seriesState['berimondKingdom'] === 'loading'"
+              [dataName]="'Points de Berimond' | translate" [backgroundIconImage]="'/assets/banner-berimond.png'"
+              [backgroundColour]="'#00aaff'"
+              [stats]="eventStats['berimondKingdom']">
+            </app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'berimondKingdom',
+              title: 'Bataille de Berimond' | translate,
+              colour: '#00aaff'
+            }"></ng-container>
+            }
+          </div>
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="nomad">
+            @if (eventCharts['nomad'] && chartVisibles.nomad) {
+            <app-player-stats-card [charts]="eventCharts['nomad']" [data]="[]"
+              [title]="'Nomades' | translate" [dataName]="'Points de nomades' | translate" [playerId]="playerId"
+              [eventName]="'player_event_nomad_history'" (fullHistoryRequested)="loadFullHistory('nomad')"
+              [scopeShown]="drawnSeriesCount('nomad')" [scopeTotal]="totalOccurrences('nomad')"
+              [isLoadingHistory]="seriesState['nomad'] === 'loading'"
+              [backgroundIconImage]="'/assets/banner-nomad.png'"
+              [backgroundColour]="'rgb(255 130 54)'"
+              [stats]="eventStats['nomad']">
+            </app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'nomad',
+              title: 'Nomades' | translate,
+              colour: 'rgb(255 130 54)'
+            }"></ng-container>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12 col-lg-6 mb-2" #chartContainer data-chart="samurai">
+            @if (eventCharts['samurai'] && chartVisibles.samurai) {
+            <app-player-stats-card [charts]="eventCharts['samurai']" [data]="[]"
+              [title]="'Samouraïs' | translate" [dataName]="'Points de samouraïs' | translate" [playerId]="playerId"
+              [eventName]="'player_event_samurai_history'" (fullHistoryRequested)="loadFullHistory('samurai')"
+              [scopeShown]="drawnSeriesCount('samurai')" [scopeTotal]="totalOccurrences('samurai')"
+              [isLoadingHistory]="seriesState['samurai'] === 'loading'"
+              [backgroundIconImage]="'/assets/banner-samurai.png'"
+              [backgroundColour]="'#58771db5'"
+              [stats]="eventStats['samurai']">
+            </app-player-stats-card>
+            } @else {
+            <ng-container *ngTemplateOutlet="chartPlaceholder; context: {
+              chart: 'samurai',
+              title: 'Samouraïs' | translate,
+              colour: '#58771db5'
+            }"></ng-container>
+            }
+          </div>
+        </div>
+      </div>
+      }
+      @if (currentTab === 'loot') {
+      <div class="tab-content">
+        <div class="row">
+          <div class="col-12">
+            @if (charts['hourly-activity']) {
+            <app-player-stats-card [charts]="{ 'Graphique': charts['hourly-activity'] }" [data]="[]"
+              [title]="'Taux d\'activité par heure' | translate" [subtitle]="('Semaine courante' | translate) + ' + ' + ('Semaine précédente' | translate) + ' (' + viewerTimeZoneLabel + ')'"
+              [dataName]="'Taux d\'activité par heure' | translate" [playerId]="playerId"
+              [eventName]="'player_loot_history'"
+              [backgroundIconImage]="'/assets/banner-loot.png'" [backgroundColour]="'#e7a220'"></app-player-stats-card>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12">
+            @if (charts['avg-gain-hour']) {
+            <app-player-stats-card [charts]="{ 'Graphique': charts['avg-gain-hour'] }" [data]="[]"
+              [title]="'Gain moyen par heure' | translate" [subtitle]="('Semaine courante' | translate) + ' + ' + ('Semaine précédente' | translate) + ' (' + viewerTimeZoneLabel + ')'"
+              [dataName]="'Gain moyen par heure' | translate" [playerId]="playerId" [eventName]="'player_loot_history'"
+              [backgroundIconImage]="'/assets/banner-loot.png'"
+              [backgroundColour]="'#e7a220'"></app-player-stats-card>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12">
+            @if (charts['loot-heatmap']) {
+            <app-player-stats-card [charts]="{ 'Graphique': charts['loot-heatmap'] }" [data]="[]"
+              [title]="'Carte d\'activité hebdomadaire' | translate" [subtitle]="'(' + viewerTimeZoneLabel + ')'"
+              [dataName]="'Carte d\'activité hebdomadaire' | translate" [playerId]="playerId"
+              [eventName]="'player_loot_history'"
+              [backgroundIconImage]="'/assets/banner-loot.png'" [backgroundColour]="'#e7a220'"></app-player-stats-card>
+            }
+          </div>
+        </div>
+        <div class="row mt-3">
+          <div class="col-12">
+            @if (charts['loot-weeks']) {
+            <app-player-stats-card [charts]="{ 'Graphique': charts['loot-weeks'] }" [data]="[]"
+              [title]="'Pillage hebdomadaire' | translate" [subtitle]="'Heures du serveur de jeu' | translate"
+              [dataName]="'Points de pillage' | translate"
+              [playerId]="playerId" [eventName]="'player_loot_history'"
+              [backgroundIconImage]="'/assets/banner-loot.png'" [backgroundColour]="'#e7a220'"></app-player-stats-card>
+            }
+          </div>
+        </div>
+      </div>
+      }
+      @if (currentTab === 'alliances') {
+      <div class="tab-content">
+        <app-stats-panel class="ps-painted" [title]="'Alliances' | translate"
+          [subtitle]="'Historique des changements d\'alliances' | translate" [accent]="'#4d7a35'"
+          [bannerImage]="'/assets/scenes/council/council.webp'" [style.--ps-head-position]="'center 72%'">
+          <div class="ps-body">
+            @if (allianceUpdates && allianceUpdates.length > 0) {
+              <app-alliance-history [updates]="allianceUpdates"></app-alliance-history>
+            } @else {
+              <div class="ps-empty">
+                <i class="fas fa-search"></i>
+                <span>{{ 'Aucun résultat' | translate }}</span>
+              </div>
+            }
+          </div>
+        </app-stats-panel>
+      </div>
+      }
+      @if (currentTab === 'castles') {
+      <div class="tab-content">
+        <app-stats-panel class="ps-painted" [title]="'Châteaux' | translate" [accent]="'#c0762a'"
+          [bannerImage]="'/assets/site/header-castles.webp'" [style.--ps-head-position]="'center 50%'">
+          <div class="ps-body ps-castles">
+            @if (quantity.patriarch === 0) {
+              <div class="ps-empty">
+                <i class="fas fa-search"></i>
+                <span>{{ 'Aucun résultat' | translate }}</span>
+              </div>
+            } @else {
+              <ng-container *ngTemplateOutlet="patriarchOverviewContent"></ng-container>
+              @if (castlesByRealm.length > 0) {
+                <div class="ps-section">
+                  <h3 class="ps-section-title">{{ 'Royaume' | translate }}</h3>
+                  <div class="ps-realm-grid">
+                    @for (realm of castlesByRealm; track realm.kingdom) {
+                      <div class="ps-realm kid-{{ realm.kingdom }}">
+                        <div class="ps-row">
+                          <span class="ps-realm-name"><span class="ps-kingdom-dot"></span>{{ realm.name | translate }}</span>
+                          <span class="ps-realm-count">{{ realm.count }}</span>
+                        </div>
+                        <div class="ps-meter ps-meter--thin">
+                          <div class="ps-meter-fill" [style.width.%]="(realm.count / quantity.patriarch) * 100"></div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                </div>
+              }
+              @if (monumentsList.length > 0) {
+                <div class="ps-section">
+                  <app-modal-table [items]="monumentsList" [columns]="monumentsColumns"
+                    [rowTemplate]="patriarchMonumentsRow" [searchFilter]="monumentsSearchFilter"
+                    defaultSortColumn="type" />
+                </div>
+              }
+            }
+          </div>
+        </app-stats-panel>
+      </div>
+      }
+      @if (currentTab === 'glory') {
+      <div class="tab-content">
+        @if (gloryLoadState === 'loading' || gloryLoadState === 'idle') {
+          <div class="text-center spinner-container mt-4">
+            <i class="fas fa-spinner fa-spin"></i>
+          </div>
+        }
+        @if (gloryLoadState === 'error') {
+          <div class="no-result">
+            <i class="fas fa-search"></i>
+            {{ 'Aucun résultat' | translate }}
+          </div>
+        }
+        @if (gloryLoadState === 'loaded' && currentPlayerTitle) {
+        <app-stats-panel class="ps-painted" [title]="'Points de gloire' | translate"
+          [subtitle]="(currentTopXFameTitle ? (currentI18nTitleKey + currentTopXFameTitle.titleID) : (currentI18nTitleKey + currentPlayerTitle.titleID)) | translate"
+          [accent]="'#b08417'" [bannerImage]="'/assets/site/header-glory.webp'" [style.--ps-head-position]="'center 58%'">
+          <div class="ps-body ps-glory">
+            <div class="ps-box ps-glory-hero">
+              <div class="ps-glory-emblem">
+                <svg class="ps-glory-ring" width="80" height="80">
+                  <circle class="ps-glory-ring-track" stroke-width="4" fill="transparent" r="36" cx="40" cy="40" />
+                  <circle class="ps-glory-ring-circle" stroke-width="4" fill="transparent"
+                    [ngStyle]="{ 'stroke-dashoffset': fameProgressStrokeOffset + 'px' }" r="36" cx="40" cy="40" />
+                </svg>
+                <img src="/assets/glory.png" alt="Glory" class="ps-glory-icon">
+              </div>
+              <div class="ps-glory-main">
+                <div class="ps-row">
+                  <span class="ps-label">{{ 'Classement' | translate }}</span>
+                  <span class="ps-meta">
+                    <i class="fas fa-clock"></i>
+                    {{ stats?.updatedAt | date:'shortTime' }}
+                  </span>
+                </div>
+                <div class="ps-row ps-glory-titleline">
+                  <h2 class="ps-title">
+                    {{ (currentTopXFameTitle ? (currentI18nTitleKey + currentTopXFameTitle.titleID) :
+                    (currentI18nTitleKey + currentPlayerTitle.titleID)) | translate }}
+                  </h2>
+                  <span class="ps-badge">#{{ stats?.playerCurrentFameRank ?? 0 | formatNumber }}</span>
+                </div>
+                <div class="ps-row ps-meter-head">
+                  <span>
+                    <strong>{{ stats?.currentFame ?? 0 | formatNumber }}</strong>
+                    {{ 'Points de gloire' | translate }}
+                  </span>
+                  <span [title]="nextFameTitle?.threshold">
+                    {{ (nextFameTitle?.threshold ?? 0) | formatNumber }}
+                    @if (nextFameTitle) {
+                    <span class="ps-meta">({{ currentI18nTitleKey + nextFameTitle.titleID | translate }})</span>
+                    }
+                  </span>
+                </div>
+                <div class="ps-meter">
+                  <div class="ps-meter-fill" [style.width.%]="fameProgressPercentage"></div>
+                  <div class="ps-meter-loss"
+                    [style.left.%]="(projectedFame / (nextFameTitle?.threshold ?? 1)) * 100"
+                    [style.width.%]="fameProgressPercentage - (projectedFame / (nextFameTitle?.threshold ?? 1)) * 100">
+                  </div>
+                </div>
+                <div class="ps-glory-forecast" [class.is-ok]="isTitleSecured" [class.is-danger]="!isTitleSecured">
+                  <span class="ps-label">{{ 'Prévision journalière' | translate }}</span>
+                  <span class="ps-glory-forecast-figures">
+                    <span class="ps-glory-forecast-loss" [title]="'Perte estimée' | translate">
+                      -{{ (stats?.currentFame ?? 0) - projectedFame | formatNumber }}
+                    </span>
+                    <i class="fas fa-arrow-right"></i>
+                    <strong [title]="projectedFame">{{ projectedFame | formatNumber }}</strong>
+                    <span class="ps-meta">({{ 'Perte de gloire' | translate: {'0': currentPlayerTitle.decay} }})</span>
+                  </span>
+                  <span class="ps-glory-forecast-status">
+                    @if (isTitleSecured) {
+                      <i class="fas fa-check-circle"></i>
+                      {{ 'Titre sécurisé' | translate }}
+                    } @else {
+                      <i class="fas fa-exclamation-triangle"></i>
+                      {{ 'Attention : Risque de rétrogradation' | translate }}
+                    }
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="ps-section">
+              <h3 class="ps-section-title">{{ 'Titres de gloire' | translate }}</h3>
+              <div class="ps-tile-grid ps-glory-top">
+                @for (fameTitle of fameTitlesTopX; track fameTitle) {
+                <div class="ps-tile" [class.is-active]="(stats?.playerCurrentFameRank ?? 0) <= (fameTitle.topX ?? -1)">
+                  <span class="ps-tile-label">#{{ fameTitle.topX }}</span>
+                  <span class="ps-tile-name">{{ currentI18nTitleKey + fameTitle.titleID | translate }}</span>
+                  <span class="ps-tile-sub">{{ fameTitle.threshold ?? -1 | formatNumber }} pts</span>
+                </div>
+                }
+              </div>
+            </div>
+            <div class="ps-section">
+              <div class="ps-ladder">
+                @for (fameTitle of visibleFameTitles; track fameTitle.titleID) {
+                <div class="ps-ladder-step is-{{ fameTitleState(fameTitle) }}"
+                  [class.is-current]="fameTitle.titleID === currentPlayerTitle.titleID">
+                  <span class="ps-ladder-icon">
+                    @switch (fameTitleState(fameTitle)) {
+                      @case ('ok') { <i class="fas fa-check"></i> }
+                      @case ('warn') { <i class="fas fa-exclamation"></i> }
+                      @default { <i class="fas fa-lock"></i> }
+                    }
+                  </span>
+                  <span class="ps-ladder-name">{{ currentI18nTitleKey + fameTitle.titleID | translate }}</span>
+                  <span class="ps-ladder-threshold">{{ (fameTitle.threshold ?? 0) | formatNumber }}</span>
+                </div>
+                }
+              </div>
+              @if (fameTitles.length > 5) {
+                <button type="button" class="ps-ladder-toggle" (click)="showAllFameTitles = !showAllFameTitles">
+                  <i class="fas" [class.fa-chevron-down]="!showAllFameTitles" [class.fa-chevron-up]="showAllFameTitles"></i>
+                  {{ (showAllFameTitles ? 'Voir moins' : 'Voir plus') | translate }}
+                </button>
+              }
+            </div>
+          </div>
+        </app-stats-panel>
+        }
+      </div>
+      }
+      @if (currentTab === 'events') {
+      <div class="tab-content">
+        <app-stats-panel class="ps-painted" [title]="'Événements' | translate" [accent]="'#b4532a'"
+          [bannerImage]="'/assets/scenes/lists/lists.webp'" [style.--ps-head-position]="'center 62%'">
+          <div class="ps-body">
+            <div class="row row-gap-3">
+              @if (eventsLoadState === 'loading' || eventsLoadState === 'idle') {
+                <div class="col-12 text-center spinner-container mt-2">
+                  <i class="fas fa-spinner fa-spin"></i>
+                </div>
+              }
+              @if (eventsLoadState === 'loaded' || eventsLoadState === 'error') {
+                @for (event of outerEvents; track event) {
+                <div class="col-12 col-lg-6">
+                  <app-event-card [event]="event" [options]="{ displayMode: 'ranking' }"
+                    (keydown.enter)="navigateToEvent(event)" (click)="navigateToEvent(event)"></app-event-card>
+                </div>
+                }
+                @if (outerEvents.length === 0) {
+                  <div class="col-12">
+                    <div class="no-result">
+                      <i class="fas fa-search"></i>
+                      {{ 'Aucun résultat' | translate }}
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        </app-stats-panel>
+      </div>
+      }
+      @if (currentTab === 'woa') {
+      <div class="tab-content">
+        <app-stats-panel class="ps-painted" [title]="'Roue des richesses inimaginables' | translate" [accent]="'#c9971c'"
+          [bannerImage]="'/assets/site/event-woa.webp'" [style.--ps-head-position]="'right 40%'">
+          <div class="ps-body">
+            <div class="row row-gap-3">
+              @if (woaLoadState === 'loading' || woaLoadState === 'idle') {
+                <div class="col-12 text-center spinner-container mt-2">
+                  <i class="fas fa-spinner fa-spin"></i>
+                </div>
+              }
+              @if (woaLoadState === 'loaded' && woaSummary) {
+                <div class="col-12">
+                  <div class="woa-summary">
+                    <div class="woa-summary-overlay">
+                      <img src="/assets/woa-icon.png" alt="" aria-hidden="true" class="woa-summary-emblem">
+                      <div class="woa-summary-head">
+                        <span class="woa-summary-count">
+                          <i class="fas fa-calendar-check"></i>
+                          {{ woaSummary.eventCount }} {{ 'Événements' | translate }}
+                        </span>
+                      </div>
+                      <div class="woa-summary-headline">
+                        <img src="/assets/woa_points.png" alt="" aria-hidden="true" class="woa-summary-icon">
+                        <div class="woa-summary-total">
+                          <span class="woa-summary-total-value">{{ woaSummary.totalTickets | formatNumber }}</span>
+                          <span class="woa-summary-total-label">{{ 'Tickets de richesse' | translate }}</span>
+                          @if (woaSummary.coverageStart && woaSummary.trackedEvents > 0) {
+                            <span class="woa-summary-coverage">
+                              <span class="woa-summary-coverage-since">
+                                {{ 'Suivi depuis' | translate: { date: (woaSummary.coverageStart | date: ('Date_7' | translate)) } }}
+                              </span>
+                              <span class="woa-summary-coverage-ratio">
+                                {{ woaSummary.eventCount }} / {{ woaSummary.trackedEvents }} {{ 'Événements' | translate }}
+                              </span>
+                            </span>
+                          }
+                        </div>
+                        <div class="woa-summary-average">
+                          <span class="woa-summary-average-value">{{ woaSummary.averageTickets | formatNumber }}</span>
+                          <span class="woa-summary-average-label">{{ 'Moyenne' | translate }}</span>
+                        </div>
+                      </div>
+                      <div class="woa-summary-facts">
+                        <div class="woa-fact">
+                          <span class="woa-fact-value">{{ woaSummary.bestEvent.value }}</span>
+                          <span class="woa-fact-label">{{ 'Record' | translate }}</span>
+                          <span class="woa-fact-sub">{{ woaSummary.bestEvent.date | date: ('Date_7' | translate) }}</span>
+                        </div>
+                        <div class="woa-fact">
+                          <span class="woa-fact-value">#{{ woaSummary.bestRankEvent.value | formatNumber }}</span>
+                          <span class="woa-fact-label">{{ 'Meilleur classement' | translate }}</span>
+                          <span class="woa-fact-sub">{{ woaSummary.bestRankEvent.date | date: ('Date_7' | translate) }}</span>
+                        </div>
+                        @if (woaSummary.trendPercent !== null) {
+                          <div class="woa-fact woa-fact-trend" [ngClass]="{
+                              'is-ok': woaSummary.trendPercent > 5,
+                              'is-danger': woaSummary.trendPercent < -5
+                            }">
+                            <span class="woa-fact-value">
+                              @if (woaSummary.trendPercent > 5) {
+                                <i class="fas fa-arrow-up"></i>
+                              } @else if (woaSummary.trendPercent < -5) {
+                                <i class="fas fa-arrow-down"></i>
+                              } @else {
+                                <i class="fas fa-minus"></i>
+                              }
+                              {{ woaSummary.trendPercent > 0 ? '+' : '' }}{{ woaSummary.trendPercent }}%
+                            </span>
+                            <span class="woa-fact-label">{{ 'Tendance récente' | translate }}</span>
+                            <span class="woa-fact-sub">{{ '3 derniers vs. moyenne' | translate }}</span>
+                          </div>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              }
+              @if (woaLoadState === 'loaded' || woaLoadState === 'error') {
+                @for (woaEvent of woaHistory; track woaEvent) {
+                  <div class="col-12 col-lg-6">
+                    <app-event-card [event]="woaEvent" [options]="{ displayMode: 'points', dateFormat: 'Date_1' }"
+                      (click)="navigateToEvent(woaEvent)" (keydown.enter)="navigateToEvent(woaEvent)"
+                      (keydown.space)="navigateToEvent(woaEvent)" tabindex="0" role="button"></app-event-card>
+                  </div>
+                }
+                @if (woaHistory.length === 0) {
+                  <div class="col-12">
+                    <div class="no-result">
+                      <i class="fas fa-search"></i>
+                      {{ 'Aucun résultat' | translate }}
+                    </div>
+                  </div>
+                }
+              }
+            </div>
+          </div>
+        </app-stats-panel>
+      </div>
+      }
+      @if (currentTab === 'aquamarine') {
+      <div class="tab-content">
+        @if (aquamarineLoadState === 'loading') {
+          <div class="text-center spinner-container mt-4">
+            <i class="fas fa-spinner fa-spin"></i>
+          </div>
+        }
+        @if (aquamarineLoadState === 'error' || (aquamarineLoadState === 'loaded' && aquamarineSnapshots.length === 0)) {
+          <div class="no-result">
+            <i class="fas fa-search"></i>
+            {{ 'Aucun résultat' | translate }}
+          </div>
+        }
+        @if (aquamarineLoadState === 'loaded' && aquamarineSnapshots.length > 0) {
+          <app-stats-panel class="ps-painted" [title]="'Îles orageuses' | translate"
+            [subtitle]="getMonthNameByDate(aquamarineMonth)" [accent]="'#1f6f68'"
+            [bannerImage]="'/assets/site/header-storm.webp'" [style.--ps-head-position]="'center 48%'">
+            <div class="ps-body">
+              <div class="ps-nav">
+                <button class="ps-nav-btn" (click)="previousAquamarineMonth()"
+                  [title]="'Aller au mois précédent' | translate">
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <span class="ps-nav-label">{{ getMonthNameByDate(aquamarineMonth) }}</span>
+                <button class="ps-nav-btn" (click)="nextAquamarineMonth()" [disabled]="isCurrentAquamarineMonth"
+                  [title]="'Aller au mois suivant' | translate">
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+              </div>
+              @if (aquamarineSnapshotsForMonth.length === 0) {
+                <div class="ps-empty">
+                  <i class="fas fa-calendar"></i>
+                  <span>{{ 'Aucun résultat' | translate }}</span>
+                </div>
+              } @else {
+                @if (aquamarineHeroMetric) {
+                  <div class="ps-hero">
+                    <img src="/assets/aquamarine_15.webp" alt="" class="ps-hero-icon" aria-hidden="true">
+                    <div class="ps-hero-content">
+                      <span class="ps-hero-value">{{ aquamarineHeroMetric.value | formatNumber }}</span>
+                      <span class="ps-hero-label">{{ AQUAMARINE_METRIC_LABELS[15] | translate }}</span>
+                    </div>
+                  </div>
+                }
+                <div class="ps-tile-grid ps-section">
+                  @for (metric of aquamarineSecondaryMetrics; track metric.metric_id) {
+                    <div class="ps-tile" [style.--ps-tile-accent]="AQUAMARINE_METRIC_COLORS[metric.metric_id]">
+                      <span class="ps-tile-icon">
+                        <img [src]="'/assets/aquamarine_' + metric.metric_id + '.webp'" alt="" aria-hidden="true">
+                      </span>
+                      <span class="ps-tile-value">{{ metric.value | formatNumber }}</span>
+                      <span class="ps-tile-label">{{ AQUAMARINE_METRIC_LABELS[metric.metric_id] | translate }}</span>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          </app-stats-panel>
+          @if (aquamarineSnapshotsForMonth.length > 0) {
+            <div class="row mt-3">
+              <div class="col-12" #chartContainer data-chart="aquamarine">
+                @if (charts['aquamarine'] && chartVisibles.aquamarine) {
+                  <app-player-stats-card
+                    [charts]="{ 'Graphique': charts['aquamarine'] }"
+                    [data]="[]"
+                    [title]="'Îles orageuses' | translate"
+                    [dataName]="'Points' | translate"
+                    [backgroundIconImage]="'/assets/site/header-storm.webp'"
+                    [eventName]="'aquamarine'"
+                    [backgroundColour]="'#1f6f68'">
+                  </app-player-stats-card>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+      }
+    </div>
+    }
+  </div>
+  }
+</div>
+
+<div class="modal fade" id="playerModal" tabindex="-1" aria-labelledby="playerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="playerModalLabel">{{ 'Historique des changements de pseudonymes' | translate }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"
+          [attr.aria-label]="'Fermer' | translate"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th scope="col">
+                  <img src="/assets/date.png" class="img-fluid" [alt]="'Date' | translate">
+                  {{ 'Date' | translate }}
+                </th>
+                <th scope="col">
+                  <img src="/assets/gge-logo.png" class="img-fluid" [alt]="'Pseudonyme' | translate">
+                  {{ 'Pseudonyme' | translate }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (player of playerUpdates; track player) {
+              <tr>
+                <td>{{ player.date ? ((player.date | date: 'dd/MM/yyyy HH') + 'h') : ('Pseudonyme initial' | translate)
+                  }}</td>
+                <td>{{ player.player }}</td>
+              </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<ng-template #patriarchOverviewContent>
+  <div class="ps-holdings">
+    <div class="ps-holdings-total">
+      <span class="ps-holdings-total-value">{{ quantity.patriarch }}</span>
+      <span class="ps-tile-label">{{ 'Nombre de chateaux' | translate }}</span>
+    </div>
+    <div class="ps-chip-row">
+      @for (kind of castleKinds; track kind.label) {
+        <div class="ps-chip" [class.is-empty]="kind.count === 0">
+          <img class="ps-chip-icon" [src]="kind.icon" [alt]="kind.label | translate">
+          <span class="ps-chip-value">{{ kind.count }}</span>
+          <span class="ps-chip-label">{{ kind.label | translate }}</span>
+        </div>
+      }
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #patriarchMonumentsRow let-monument>
+  <tr>
+    <td>{{ monument.type }}</td>
+    <td><span class="ps-kingdom-pill kid-{{ monument.kingdom }}"><span class="ps-kingdom-dot"></span>{{
+      getRealmName(monument.kingdom) | translate }}</span></td>
+    <td>{{ monument.position }}</td>
+  </tr>
+</ng-template>
+
+<ng-template #chartPlaceholder let-chart="chart" let-title="title" let-colour="colour">
+  <div class="chart-placeholder" [ngStyle]="{ 'border-left-color': colour }">
+    <div class="chart-placeholder-head">
+      <span class="chart-placeholder-title">{{ title }}</span>
+      @if (seriesState[chart] === 'loading') {
+      <span class="chart-placeholder-spinner" aria-hidden="true"></span>
+      }
+    </div>
+    @if (summaryFor(chart); as summary) {
+      @if (summary.row_count === 0) {
+      <p class="chart-placeholder-empty">{{ 'Aucun résultat' | translate }}</p>
+      } @else {
+      <div class="chart-placeholder-stats">
+        <div class="chart-placeholder-stat">
+          <span class="chart-placeholder-label">{{ 'Points' | translate }}</span>
+          <span class="chart-placeholder-value">{{ (summary.last_point ?? 0) | formatNumber }}</span>
+          <span class="chart-placeholder-sub">{{ summary.last_date | date: ('Date_1' | translate) }}</span>
+        </div>
+        <div class="chart-placeholder-stat">
+          <span class="chart-placeholder-label">{{ 'Record' | translate }}</span>
+          <span class="chart-placeholder-value">{{ (summary.max_point ?? 0) | formatNumber }}</span>
+          <span class="chart-placeholder-sub">{{ summary.max_point_date | date: ('Date_1' | translate) }}</span>
+        </div>
+        <div class="chart-placeholder-stat">
+          <span class="chart-placeholder-label">{{ 'Derniers 7 jours' | translate }}</span>
+          @if (summary.point_gain_7d === null) {
+          <span class="chart-placeholder-value chart-placeholder-idle">-</span>
+          } @else {
+          <span class="chart-placeholder-value"
+            [ngClass]="summary.point_gain_7d >= 0 ? 'chart-placeholder-gain' : 'chart-placeholder-loss'">
+            {{ summary.point_gain_7d >= 0 ? '+' : '' }}{{ summary.point_gain_7d | formatNumber }}
+          </span>
+          }
+          <span class="chart-placeholder-sub">{{ summary.row_count | formatNumber }} {{ 'points' | translate }}</span>
+        </div>
+      </div>
+      }
+    } @else {
+    <div class="chart-placeholder-skeleton"></div>
+    }
+    @if (seriesState[chart] === 'error') {
+    <button class="gge-btn light-yellow btn-sm mt-2" (click)="ensureSeries(chart)" (keyup.enter)="ensureSeries(chart)">
+      {{ 'Réessayer' | translate }}
+    </button>
+    }
+  </div>
+</ng-template>

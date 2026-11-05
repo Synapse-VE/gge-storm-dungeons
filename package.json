@@ -1,0 +1,15 @@
+{
+  "name": "gge-storm-dungeons",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HIS1 storm islands and fortress tracker: GitHub Pages + Supabase + Render",
+  "scripts": {
+    "db:apply": "node scripts/apply-migrations.mjs",
+    "seed": "npm --prefix apps/collector run seed",
+    "collector": "npm --prefix apps/collector run start",
+    "collector:storm": "npm --prefix apps/collector run storm",
+    "collector:dungeons": "npm --prefix apps/collector run dungeons",
+    "web": "npm --prefix apps/web start",
+    "empire-api": "npm --prefix apps/empire-api start"
+  }
+}

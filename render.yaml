@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: gge-storm-dungeons
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /status
+    autoDeploy: true
+    envVars:
+      - key: GGE_ZONE
+        value: EmpireEx_25
+      - key: GGE_LANG
+        value: fr
+      - key: GGE_E4K
+        value: "0"
+      - key: COLLECTOR_STORM_CRON
+        value: "*/10 * * * *"
+      - key: COLLECTOR_DUNGEONS_CRON
+        value: "*/15 * * * *"
+      - key: COLLECTOR_RUN_ON_START
+        value: "1"
+      - key: GGE_USERNAME
+        sync: false
+      - key: GGE_PASSWORD
+        sync: false
+      - key: API_PATH_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

@@ -1,0 +1,66 @@
+<!--
+ *                                   __                        __
+ *    ____   ____   ____           _/  |_____________    ____ |  | __ ___________
+ *   / ___\ / ___\_/ __ \   ______ \   __\_  __ \__  \ _/ ___\|  |/ // __ \_  __ \
+ *  / /_/  > /_/  >  ___/  /_____/  |  |  |  | \// __ \\  \___|    <\  ___/|  | \/
+ *  \___  /\___  / \___  >          |__|  |__|  (____  /\___  >__|_ \\___  >__|
+ * /_____//_____/      \/                            \/     \/     \/    \/
+ *
+ *  Copyrights (c) 2025-2026 - gge-tracker.com & gge-tracker contributors
+ *
+-->
+<!doctype html>
+<html lang="en" style="max-width: 100vw;">
+
+<head>
+  <meta charset="utf-8">
+  <title>HIS1 Storm & Dungeons — GGE Tracker</title>
+  <base href="/">
+  <meta name="title" content="HIS1 Storm & Dungeons — GGE Tracker" />
+  <meta name="description"
+    content="HIS1 storm islands and fortress tracker: forts, resource isles and dungeon cooldowns in real time.">
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://gge-tracker.com/" />
+  <meta property="og:title" content="HIS1 Storm & Dungeons — GGE Tracker" />
+  <meta property="og:description"
+    content="HIS1 storm islands and fortress tracker: forts, resource isles and dungeon cooldowns in real time." />
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://gge-tracker.com/" />
+  <meta property="twitter:title" content="HIS1 Storm & Dungeons — GGE Tracker" />
+  <meta property="twitter:description"
+    content="HIS1 storm islands and fortress tracker: forts, resource isles and dungeon cooldowns in real time." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#060d1f">
+  <script>
+    (function () {
+      var supported = ['ar', 'bg', 'cs', 'de', 'el', 'en', 'es', 'fr', 'hu', 'it', 'nl', 'pl', 'pt', 'ro', 'ru', 'tr'];
+      var saved = null;
+      try {
+        saved = localStorage.getItem('lang');
+      } catch (e) {}
+      var candidates = saved ? [saved] : navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+      for (var i = 0; i < candidates.length; i++) {
+        var code = String(candidates[i] || '').toLowerCase().split('-')[0];
+        if (supported.indexOf(code) !== -1) {
+          document.documentElement.lang = code;
+          return;
+        }
+      }
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="startup-overlay">
+    <div class="startup-container">
+      <img class="startup-logo" src="assets/seo/startup-logo-280.webp" width="140" height="140" alt="logo"/>
+      <div class="startup-loader"></div>
+    </div>
+  </div>
+  <app-loader></app-loader>
+  <app-root style="display: none;"></app-root>
+</body>
+
+</html>

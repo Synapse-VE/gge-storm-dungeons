@@ -1,0 +1,116 @@
+@if (!selectedAllianceInAnalyzer) {
+  <app-layered-scene scene="rift" class="tournament-scene rift-scene" />
+}
+<div class="container tournaments">
+  @if (!selectedAllianceInAnalyzer) {
+    <header class="tournament-hero">
+      <h1>{{ 'Tournoi de la Faille' | translate }}</h1>
+      <p>{{ 'rift-raid-intro' | translate }}</p>
+    </header>
+    @if (!isEventMissing) {
+      <app-event-timeline [events]="events" [currentDate]="currentDate" [isLoading]="isDataLoading"
+        (dateChange)="loadDate($event)" />
+    }
+    <div class="tournaments-panel p-3 rounded-4">
+      <div class="mb-3">
+        <app-search-form [formFilters]="null" [isInLoading]="isInLoading"
+          [inputTip]="'Rechercher une alliance' | translate" [defaultSearch]="search"
+          [searchTypes]="{ player: false, alliance: true }" (searchAlliance)="searchAlliance($event)">
+        </app-search-form>
+      </div>
+
+      @if (isEventMissing && !isInLoading) {
+        <p class="empty-state text-center my-5">{{ 'Aucun Tournoi de la Faille enregistré pour le moment' | translate }}</p>
+      } @else {
+        <div class="division-row text-center mb-3">
+          <div class="d-flex justify-content-center gap-3 flex-wrap">
+            @for (option of divisions; track option) {
+              <button class="division-button btn btn-ghost d-flex align-items-center justify-content-center"
+                [class.active]="!search && option === division" (click)="changeDivision(option)"
+                [title]="('Division' | translate) + ' ' + (divisionNames[option - 1] | translate)">
+                <app-division-badge [division]="option" [nameKey]="divisionNames[option - 1]" [size]="42" />
+              </button>
+            }
+          </div>
+        </div>
+        <div class="mt-2">
+          <app-table [sort]="''" [reverse]="false" [isInLoading]="isDataLoading" [maxPage]="pagination.total_pages"
+            [page]="pagination.current_page" [search]="search" [headers]="[
+              ['allianceName', 'Alliance' | translate, '/assets/min-alliance.png', true],
+              ['server', 'Serveur' | translate, '', true],
+              ['points', 'Points' | translate, '', true],
+              ['currentDivision', 'Division' | translate, '', true],
+              ['currentSubdivision', 'Sous-division' | translate, '', true],
+              ['rankInSubDivision', 'Classement dans la sous-division' | translate, '', true],
+              ['actions', 'Actions' | translate, '', true]
+            ]" (navigateToPage)="navigateTo($event)" (previousPage)="previousPage()" (nextPage)="nextPage()">
+            @if (alliances.length === 0 && !isDataLoading) {
+              <tr>
+                <td colspan="10">{{ 'Aucune alliance trouvée' | translate }}</td>
+              </tr>
+            }
+            @for (alliance of alliances; track alliance.alliance_id ?? $index; let i = $index) {
+              <tr>
+                <td class="col-rank full-width">
+                  <span class="mobile-only">#</span>
+                  {{ (pagination.current_page - 1) * 10 + i + 1 }}
+                </td>
+                <td class="fw-semibold col-name">
+                  <span class="name">{{ alliance.alliance_name }}</span>
+                </td>
+                <td>
+                  @if (alliance.server) {
+                    <img [src]="serverService.getFlagUrl(alliance.server)" [alt]="alliance.server" [title]="alliance.server" height="20">
+                    {{ alliance.server }}
+                  } @else {
+                    <span class="text-muted">?</span>
+                  }
+                </td>
+                <td class="fw-bold">{{ alliance.score | number }}</td>
+                <td>
+                  <app-division-badge [division]="alliance.division" [nameKey]="divisionNames[alliance.division - 1]" />
+                </td>
+                <td>
+                  {{ 'Sous-division' | translate }}
+                  <em>{{ alliance.subdivision }}</em>
+                  @if (!isSubdivisionFiltered) {
+                    <button type="button" class="subdivision-toggle ms-2" (click)="filterBySubdivision(alliance)"
+                      [title]="('Filtrer' | translate) + ' (' + ('Sous-division' | translate) + ' ' + alliance.subdivision + ')'">
+                      <i class="fa-solid fa-filter subdivision-indicator"></i>
+                    </button>
+                  } @else {
+                    <button type="button" class="subdivision-toggle ms-2" (click)="clearSubdivisionFilter()"
+                      [title]="'Réinitialiser les filtres' | translate">
+                      <i class="fa-solid fa-filter-circle-xmark subdivision-indicator"></i>
+                    </button>
+                  }
+                </td>
+                <td>
+                  <span class="cell-label">{{ 'Classement dans la sous-division' | translate }}</span>{{ alliance.rank }}
+                </td>
+                <td class="col-actions">
+                  <button type="button" class="action-icon" [class.disabled]="alliance.disabled"
+                    [class.analyzing]="analyzingAllianceId === alliance.alliance_id"
+                    [disabled]="alliance.disabled || analyzingAllianceId !== null"
+                    [attr.aria-busy]="analyzingAllianceId === alliance.alliance_id"
+                    (click)="analyzeAlliance(alliance)" [title]="'Score' | translate">
+                    <img src="/assets/icon_points.png" alt="points" height="24" class="ms-1 btn-icon">
+                    @if (analyzingAllianceId === alliance.alliance_id) {
+                      <span class="analyze-spinner" aria-hidden="true"></span>
+                    }
+                  </button>
+                </td>
+              </tr>
+            }
+          </app-table>
+        </div>
+      }
+    </div>
+  }
+
+  @if (selectedAllianceInAnalyzer; as analysis) {
+    <app-grand-tournament-analyze [entries]="analysis.analysis" [tournamentAllianceData]="analyzerMeta(analysis)"
+      [divisionNames]="divisionNames" (exitEmitter)="selectedAllianceInAnalyzer = null">
+    </app-grand-tournament-analyze>
+  }
+</div>

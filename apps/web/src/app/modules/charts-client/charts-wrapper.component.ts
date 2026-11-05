@@ -1,0 +1,100 @@
+import { isPlatformBrowser } from '@angular/common';
+import {
+  Component,
+  ComponentRef,
+  PLATFORM_ID,
+  ViewContainerRef,
+  Injector,
+  effect,
+  input,
+  inject,
+  OnInit,
+  output,
+  ViewChild,
+} from '@angular/core';
+import {
+  ApexAxisChartSeries,
+  ApexChart,
+  ApexXAxis,
+  ApexAnnotations,
+  ApexYAxis,
+  ApexDataLabels,
+  ApexPlotOptions,
+  ApexGrid,
+  ApexMarkers,
+  ApexFill,
+  ApexStroke,
+  ApexTitleSubtitle,
+  ApexTooltip,
+  ApexLegend,
+  ApexForecastDataPoints,
+  ApexNonAxisChartSeries,
+} from 'ng-apexcharts';
+
+type ChartComponentInstance = InstanceType<(typeof import('ng-apexcharts'))['ChartComponent']>;
+type ChartsClientInstance = InstanceType<(typeof import('./charts-client.component'))['ChartsClientComponent']>;
+
+@Component({
+  selector: 'app-charts-wrapper',
+  standalone: true,
+  template: '<ng-container #container></ng-container>',
+})
+export class ChartsWrapperComponent implements OnInit {
+  public series = input.required<ApexAxisChartSeries | ApexNonAxisChartSeries>();
+  public chart = input.required<ApexChart>();
+  public xaxis = input<ApexXAxis | ApexXAxis[]>();
+  public annotations = input<ApexAnnotations>();
+  public yaxis = input<ApexYAxis | ApexYAxis[]>();
+  public dataLabels = input<ApexDataLabels>();
+  public plotOptions = input<ApexPlotOptions>();
+  public labels = input<string[]>();
+  public grid = input<ApexGrid>();
+  public colors = input<string[]>();
+  public markers = input<ApexMarkers>();
+  public fill = input<ApexFill>();
+  public stroke = input<ApexStroke>();
+  public title = input<ApexTitleSubtitle>();
+  public tooltip = input<ApexTooltip>();
+  public legend = input<ApexLegend>();
+  public forecastDataPoints = input<ApexForecastDataPoints>();
+  public chartComponentOutput = output<ChartComponentInstance>();
+  public component?: ChartComponentInstance;
+
+  @ViewChild('container', { read: ViewContainerRef, static: true }) private readonly vcr!: ViewContainerRef;
+  private readonly platformId = inject(PLATFORM_ID);
+
+  constructor(private readonly injector: Injector) {}
+
+  public async ngOnInit(): Promise<void> {
+    if (!isPlatformBrowser(this.platformId)) return;
+    const { ChartsClientComponent } = await import('./charts-client.component');
+    const componentReference = this.vcr.createComponent(ChartsClientComponent, {
+      injector: this.injector,
+    });
+    this.pushInputs(componentReference);
+    componentReference.instance.chartComponentOutput.subscribe((output) => {
+      this.chartComponentOutput.emit(output);
+    });
+    effect(() => this.pushInputs(componentReference), { injector: this.injector });
+  }
+
+  private pushInputs(componentReference: ComponentRef<ChartsClientInstance>): void {
+    componentReference.setInput('series', this.series());
+    componentReference.setInput('chart', this.chart());
+    componentReference.setInput('xaxis', this.xaxis());
+    componentReference.setInput('annotations', this.annotations());
+    componentReference.setInput('yaxis', this.yaxis());
+    componentReference.setInput('dataLabels', this.dataLabels());
+    componentReference.setInput('plotOptions', this.plotOptions());
+    componentReference.setInput('labels', this.labels());
+    componentReference.setInput('grid', this.grid());
+    componentReference.setInput('colors', this.colors());
+    componentReference.setInput('markers', this.markers());
+    componentReference.setInput('fill', this.fill());
+    componentReference.setInput('stroke', this.stroke());
+    componentReference.setInput('title', this.title());
+    componentReference.setInput('tooltip', this.tooltip());
+    componentReference.setInput('legend', this.legend());
+    componentReference.setInput('forecastDataPoints', this.forecastDataPoints());
+  }
+}

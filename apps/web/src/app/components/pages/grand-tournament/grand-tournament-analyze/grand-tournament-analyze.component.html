@@ -1,0 +1,63 @@
+<section class="analyze-panel p-3 rounded-4">
+  <header class="analyze-header">
+    <div class="analyze-identity">
+      <h1 class="analyze-title">{{ tournamentAllianceData().alliance_name }}</h1>
+      <span class="analyze-server">{{ tournamentAllianceData().server }}</span>
+    </div>
+    <button class="btn-modern analyze-close" (click)="closeAnalyze()">
+      <lucide-icon class="lucide lucide-x-circle" [img]="XCircle"></lucide-icon> {{ 'Fermer' | translate }}
+    </button>
+  </header>
+
+  <div class="analyze-card analyze-chart">
+    @if (charts['scoreOverTime'] && isBrowser) {
+      <app-charts-wrapper
+        [series]="charts['scoreOverTime'].series"
+        [annotations]="charts['scoreOverTime'].annotations || {}"
+        [chart]="charts['scoreOverTime'].chart"
+        [xaxis]="charts['scoreOverTime'].xaxis"
+        [yaxis]="charts['scoreOverTime'].yaxis"
+        [dataLabels]="charts['scoreOverTime'].dataLabels"
+        [plotOptions]="charts['scoreOverTime'].plotOptions"
+        [labels]="charts['scoreOverTime'].labels || []"
+        [grid]="charts['scoreOverTime'].grid"
+        [colors]="charts['scoreOverTime'].colors"
+        [markers]="charts['scoreOverTime'].markers || {}"
+        [fill]="charts['scoreOverTime'].fill"
+        [stroke]="charts['scoreOverTime'].stroke"
+        [title]="charts['scoreOverTime'].title"
+        [tooltip]="charts['scoreOverTime'].tooltip"
+        [legend]="charts['scoreOverTime'].legend"
+      ></app-charts-wrapper>
+    }
+  </div>
+
+  <div class="analyze-card">
+    <div class="analyze-table-scroll modern-scroll">
+      <table class="modern-table">
+        <thead>
+          <tr>
+            <th>{{ 'Date' | translate }}</th>
+            <th>{{ 'Division' | translate }}</th>
+            <th>{{ 'Sous-division' | translate }}</th>
+            <th>{{ 'Classement dans la sous-division' | translate }}</th>
+            <th>{{ 'Points' | translate }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of entriesWithDifference; track entry.id) {
+            <tr>
+              <td>{{ entry.date | date: ('Date_5' | translate) }}</td>
+              <td>
+                <app-division-badge [division]="entry.division" [nameKey]="divisionNames()[entry.division - 1]" [size]="32" />
+              </td>
+              <td>{{ 'Sous-division' | translate }} <em>{{ entry.subdivision }}</em></td>
+              <td>{{ entry.rank }}</td>
+              <td>{{ entry.score | number }} <span [innerHTML]="entry.scoreDifference"></span></td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

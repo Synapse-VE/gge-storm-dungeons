@@ -1,0 +1,159 @@
+<header class="topbar">
+  <div class="flex items-center gap-4">
+    @if (sidebarBtn()) {
+      <button (click)="toggleSidebar()" class="sidebar-btn lg:hidden" [class.is-open]="isSidebarOpen()"
+        type="button" aria-controls="app-sidebar-panel" [attr.aria-expanded]="isSidebarOpen()"
+        [attr.aria-label]="(isSidebarOpen() ? 'Fermer' : 'Menu') | translate">
+        @if (isSidebarOpen()) {
+          <app-icon name="X" [size]="20"></app-icon>
+        } @else {
+          <app-icon name="Menu" [size]="20"></app-icon>
+        }
+      </button>
+    }
+    @if (!isSidebarOpen()) {
+      <a class="topbar-brand" routerLink="/" aria-label="GGE Tracker">
+        <img src="/assets/seo/signature-logo.png" alt="" width="36" height="36" />
+      </a>
+    }
+    <div class="hidden md:flex flex-col">
+      <span class="breadcrumb-label text-nowrap">{{ 'Serveur actuel' | translate }}</span>
+
+      <div class="position-relative" id="server-menu">
+        <button class="server-selector" [class.rotate]="isServerMenuOpen()" (click)="toggleServerMenu()"
+          [title]="serverService.currentServer?.name">
+          <span>{{serverService.currentServer?.name}}</span>
+          <img [src]="serverService.currentServer?.flagUrl" width="20" class="me-2" alt="">
+
+          <app-icon name="ChevronDown" class="chevron" [size]="16"></app-icon>
+        </button>
+
+        @if (isServerMenuOpen()) {
+          <div class="server-dropdown">
+            <input type="text" #searchServerInput id="searchServerInput" name="searchServerInput" class="form-control"
+              placeholder="{{ 'Rechercher' | translate }}" [(ngModel)]="filteredServerInput" aria-label="{{ 'Rechercher' | translate }}">
+            <div class="separator"></div>
+            @for (srv of serverService.xmlServers; track srv) {
+              <button
+                (click)="selectServer(srv.name)"
+            [hidden]="!srv.enabled ||
+              (filteredServerInput
+                && !srv.name.toLowerCase().includes(filteredServerInput.toLowerCase())
+                && !srv.ggeServerName.toLowerCase().includes(filteredServerInput.toLowerCase())
+              )">
+                <div>
+                  <img [src]="srv.flagUrl" width="20" class="me-2" alt="">
+                  <span class="server-badge">{{srv.name}}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <div class="font-bold text-sm">{{ srv.ggeServerName }}</div>
+                  @if (srv.advancedCastle) {
+                    <i class="fa-solid fa-chess-rook advanced-castle-icon" title="{{ 'Analyse avancée des châteaux' | translate }}"
+                      [attr.aria-label]="'Analyse avancée des châteaux' | translate"></i>
+                  }
+                </div>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  </div>
+  <div class="flex items-center gap-4 actions h-100 overflow-hidden">
+    <div #topbarHost></div>
+    <div class="divider"></div>
+    <div class="topbar-actions flex items-center gap-4">
+
+      <!-- Discord -->
+      <div class="position-relative">
+        <a href="https://discord.gg/eb6WSHQqYh" target="_blank" rel="noopener" class="action-icon" aria-label="Discord">
+          <i class="fa-brands fa-discord"></i>
+          <span class="label d-none d-xxl-inline">Discord</span>
+        </a>
+
+        @if (discordMemberCount > 0) {
+          <span class="discord-badge">
+            {{ discordMemberCount }}
+          </span>
+        }
+      </div>
+
+      <!-- About -->
+      <a class="action-icon about-btn" [routerLink]="['/', 'about']" [title]="'A propos' | translate">
+        <app-icon name="Info" [size]="19"></app-icon>
+        <span class="label d-none d-xxl-inline">{{ 'A propos' | translate }}</span>
+      </a>
+
+      <!-- Dev API -->
+      <a href="https://docs.gge-tracker.com"
+        target="_blank" rel="noopener"  [title]="'API' | translate" class="action-icon api-btn">
+        <app-icon name="CodeXml" [size]="19"></app-icon>
+        <span class="label d-none d-xxl-inline">{{ 'API' | translate }}</span>
+      </a>
+
+      <!-- GitHub -->
+      <a href="https://github.com/gge-tracker/gge-tracker" target="_blank" rel="noopener" class="action-icon github-btn"
+          aria-label="GitHub">
+        <i class="fa-brands fa-github"></i>
+      </a>
+
+      <!-- Lang selector -->
+      <div class="position-relative" id="language-menu">
+        <button #languageToggle type="button" class="lang-pill button-reset" (click)="toggleLanguageMenu()"
+          [class.rotate]="isLanguageMenuOpen()" aria-haspopup="dialog" aria-controls="language-panel"
+          [attr.aria-expanded]="isLanguageMenuOpen()" [attr.aria-label]="'Changer de langue' | translate"
+          [title]="languageService.getCurrentLanguage()?.label ?? ''">
+          <img [src]="languageService.getFlagUrlForLang(languageService.currentLang)" width="20" height="15" alt="">
+          <span class="lang-code">{{ languageService.currentLang }}</span>
+          <app-icon name="ChevronDown" class="chevron" [size]="14"></app-icon>
+        </button>
+
+        @if (isLanguageMenuOpen()) {
+          <div class="lang-dropdown" id="language-panel" role="dialog" [attr.aria-label]="'Changer de langue' | translate"
+            (keydown)="onLanguagePanelKeydown($event)">
+            <div class="lang-search">
+              <app-icon name="Search" class="lang-search-icon" [size]="15"></app-icon>
+              <input #languageSearch type="search" class="lang-search-input" [(ngModel)]="languageQuery"
+                [placeholder]="'Rechercher' | translate" [attr.aria-label]="'Rechercher' | translate"
+                autocomplete="off" spellcheck="false" (keydown.enter)="selectFirstLanguage()">
+            </div>
+            <div class="lang-options" role="list">
+              @for (lang of filteredLanguages; track lang.code) {
+                <button type="button" class="lang-option" role="listitem" [lang]="lang.code"
+                  [class.active]="lang.code === languageService.currentLang"
+                  [attr.aria-current]="lang.code === languageService.currentLang ? 'true' : null"
+                  (click)="selectLanguage(lang.code)">
+                  <img [src]="lang.flagUrl" width="20" height="15" alt="">
+                  <span class="lang-names">
+                    <span class="lang-label" dir="auto">{{ lang.label }}</span>
+                    @if (lang.englishName !== lang.label) {
+                      <span class="lang-english" lang="en">{{ lang.englishName }}</span>
+                    }
+                  </span>
+                  @if (lang.code === languageService.currentLang) {
+                    <i class="fa-solid fa-check lang-check" aria-hidden="true"></i>
+                  }
+                </button>
+              } @empty {
+                <span class="lang-empty">{{ 'Aucun résultat' | translate }}</span>
+              }
+            </div>
+            @if (isDevMode()) {
+              <div class="separator"></div>
+              <span class="dev-mode-warning">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Current language is overridden by <strong>lang_dev</strong> localStorage variable.
+              </span>
+              <button (click)="disableDevLangOverride()" class="language-dev-btn">
+                <i class="fa-solid fa-xmark"></i>
+                Disable
+              </button>
+            }
+          </div>
+        }
+      </div>
+
+    </div>
+
+  </div>
+</header>

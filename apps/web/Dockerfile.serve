@@ -1,0 +1,31 @@
+######################################################################################
+#                                     __                        __                   #
+#      ____   ____   ____           _/  |_____________    ____ |  | __ ___________   #
+#     / ___\ / ___\_/ __ \   ______ \   __\_  __ \__  \ _/ ___\|  |/ // __ \_  __ \  #
+#    / /_/  > /_/  >  ___/  /_____/  |  |  |  | \// __ \\  \___|    <\  ___/|  | \/  #
+#    \___  /\___  / \___  >          |__|  |__|  (____  /\___  >__|_ \\___  >__|     #
+#   /_____//_____/      \/                            \/     \/     \/    \/         #
+#                                                                                    #
+#                     This file is part of the gge-tracker project.                  #
+#        Copyrights (c) 2025 - gge-tracker.com & gge-tracker contributors            #
+#                                                                                    #
+######################################################################################
+
+FROM node:24-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm ci --ignore-scripts
+
+COPY --chown=node:node angular.json ngsw-config.json tsconfig*.json ./
+COPY --chown=node:node src ./src
+COPY --chown=node:node public ./public
+
+RUN chown node:node /app
+
+USER node
+
+EXPOSE 4200
+CMD ["npm", "start", "--", "--configuration", "development"]
