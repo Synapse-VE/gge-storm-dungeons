@@ -607,10 +607,12 @@ export class ApiRestService {
    * Get the last updates from the API
    * @returns A promise that resolves to the last updates data
    */
-  public async getLastUpdates(notUpdateLocation = true): Promise<ApiResponse<ApiLastUpdates>> {
-    const response = await this.apiFetch<ApiLastUpdates>(`${ApiRestService.apiUrl}`, notUpdateLocation);
-    if (!response.success) return response;
-    return { success: true, data: response.data };
+  public async getLastUpdates(_notUpdateLocation = true): Promise<ApiResponse<ApiLastUpdates>> {
+    try {
+      return { success: true, data: await this.supabaseApi.lastUpdates() };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
   }
 
   /**

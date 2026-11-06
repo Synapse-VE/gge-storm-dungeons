@@ -11,7 +11,8 @@
     "seed": "tsx src/seed.ts",
     "storm": "tsx src/index.ts --once storm",
     "dungeons": "tsx src/index.ts --once dungeons",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "init": "tsx src/index.ts --once init"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

@@ -28,6 +28,7 @@ GGE_ZONE=EmpireEx_25
 GGE_ALL_SERVERS=0
 GGE_LANG=fr
 API_PATH_SECRET=long-random-secret
+API_KEY=long-random-token
 GGE_RESPONSE_TIMEOUT_MS=10000
 GGE_E4K=0
 PORT=3000
@@ -93,10 +94,13 @@ POST /secret/EmpireEx_25/raw       { "frame": "%xt%EmpireEx_25%..." }
 - `POST /secret/EmpireEx_25/<command>` accepts the headers as a JSON body.
 - `POST /secret/EmpireEx_25/raw` sends a raw game frame (`%xt%...%` or `<msg...>`)
   and waits for the response. This is intentionally powerful: protect it.
-- `GET /status` is public and returns `{ "EmpireEx_25": true, "<secret>": true }`.
+- `GET /status` is public and returns the zone connection booleans (it never
+  includes the secret).
 - `GET /ready` returns 200 only when the socket is connected.
-- `X-API-Key` is accepted as an alternative to the secret path when `API_KEY`
-  is configured.
+- When `API_KEY` is configured, command requests must also send
+  `X-API-Key: <token>` (or `Authorization: Bearer <token>`). With both
+  `API_PATH_SECRET` and `API_KEY` set, **both** factors are required. Health
+  endpoints stay public.
 
 The tracker uses `GET /<zone>/<command>/<headers>` and `/status`; set its
 `GGE_API_URL*` variables to:
@@ -113,8 +117,8 @@ The tracker will build `https://host/<secret>/EmpireEx_25/...`. The
 ## Render
 
 - Deploy as a **Docker** web service, plan Free.
-- Set `GGE_USERNAME`, `GGE_PASSWORD`, `GGE_ZONE=EmpireEx_25` and
-  `API_PATH_SECRET` in the dashboard (never commit them).
+- Set `GGE_USERNAME`, `GGE_PASSWORD`, `GGE_ZONE=EmpireEx_25`,
+  `API_PATH_SECRET` and `API_KEY` in the dashboard (never commit them).
 - Health check: `/status` (returns 200 while the socket logs in).
 - Free services sleep after inactivity; use an external cron ping to `/status`
   every 10 minutes if you need it awake (750 h/month).

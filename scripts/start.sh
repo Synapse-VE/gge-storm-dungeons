@@ -6,6 +6,7 @@ set -e
 if [ -z "$GGE_API_URL" ] && [ -n "$API_PATH_SECRET" ]; then
   export GGE_API_URL="http://127.0.0.1:${PORT:-3000}/${API_PATH_SECRET}"
 fi
+export GGE_API_TOKEN="${GGE_API_TOKEN:-$API_KEY}"
 
 node apps/empire-api/server.js &
 API_PID=$!

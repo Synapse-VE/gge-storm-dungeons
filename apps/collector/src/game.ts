@@ -41,7 +41,10 @@ export async function command<T = any>(name: string, headers: string | null = nu
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const response = await axios.get<GameResponse<T>>(url, { timeout: env.httpTimeoutMs });
+      const response = await axios.get<GameResponse<T>>(url, {
+        timeout: env.httpTimeoutMs,
+        headers: env.ggeApiToken ? { 'X-API-Key': env.ggeApiToken } : undefined,
+      });
       return response.data;
     } catch (error) {
       lastError = error;

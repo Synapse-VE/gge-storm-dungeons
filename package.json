@@ -10,6 +10,8 @@
     "collector:storm": "npm --prefix apps/collector run storm",
     "collector:dungeons": "npm --prefix apps/collector run dungeons",
     "web": "npm --prefix apps/web start",
-    "empire-api": "npm --prefix apps/empire-api start"
+    "empire-api": "npm --prefix apps/empire-api start",
+    "test:smoke": "node scripts/smoke-no-toast.mjs",
+    "init": "npm --prefix apps/collector run init"
   }
 }

@@ -7,6 +7,7 @@ import {
   ApiDungeonsMetaResponse,
   ApiDungeonsResource,
   ApiDungeonsResponse,
+  ApiLastUpdates,
   ApiPlayerProfile,
   ApiPlayerSuggestion,
   ApiStormFort,
@@ -289,6 +290,76 @@ export class SupabaseApiService {
         total_items_count: rows.length,
       },
       dungeons: rows,
+    };
+  }
+
+  public async lastUpdates(): Promise<ApiLastUpdates> {
+    const now = new Date();
+    const [storm, dungeons, playersCount, dungeonsCount] = await Promise.all([
+      this.stormMeta().catch(() => ({ last_scan_at: null })),
+      this.dungeonsMeta().catch(() => ({ last_scan_at: null })),
+      this.client.from('v_players').select('*', { count: 'exact', head: true }),
+      this.client.from('v_dungeons').select('*', { count: 'exact', head: true }),
+    ]);
+    const timestamps = [storm.last_scan_at, dungeons.last_scan_at]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => new Date(value).getTime())
+      .filter((value) => Number.isFinite(value));
+    const lastScan = timestamps.length > 0 ? new Date(Math.max(...timestamps)) : now;
+    const lastIso = lastScan.toISOString();
+    const ageSeconds = Math.max(0, Math.floor((now.getTime() - lastScan.getTime()) / 1000));
+    const eventDates = {
+      berimond_invasion: lastIso,
+      berimond_kingdom: lastIso,
+      bloodcrow: lastIso,
+      loot: lastIso,
+      might: lastIso,
+      nomad: lastIso,
+      samurai: lastIso,
+      war_realms: lastIso,
+    };
+    return {
+      api_url: '',
+      documentation_url: 'https://github.com/Synapse-VE/gge-storm-dungeons',
+      discord_url: 'https://discord.gg/gge-tracker',
+      discord_member_count: 0,
+      release_version: '2026-11-02',
+      website_url: 'https://synapse-ve.github.io/gge-storm-dungeons/',
+      server: 'HIS1',
+      server_code: '212',
+      zone: 'EmpireEx_25',
+      platform: 'EP',
+      version: '26.11.02',
+      generated_at: now.toISOString(),
+      update_in_progress: false,
+      last_update: eventDates,
+      data: {
+        version: 1,
+        state: 'idle',
+        age_seconds: ageSeconds,
+        stale: false,
+        last_fill_started_at: lastIso,
+        last_fill_completed_at: lastIso,
+        last_fill_duration_seconds: 0,
+        fill_interval_seconds: 600,
+        next_fill_estimated_at: null,
+        next_data_estimated_at: null,
+        steps: [],
+      },
+      dataset: {
+        players: playersCount.count ?? null,
+        alliances: null,
+        snapshot_at: lastIso,
+      },
+      weekly_loot_reset: null,
+      polling: {
+        recommended_interval_seconds: 60,
+        poll_after: null,
+        cache_ttl_seconds: 60,
+        etag: '',
+        instructions: '',
+      },
+      rate_limit: { requests: 0, window_seconds: 60, applies_to_this_route: false },
     };
   }
 

@@ -3,7 +3,7 @@ const commands = require('./data/commands.json');
 const { setNestedValue } = require('./utils/nestedHeaders');
 
 const SECRET = String(process.env.API_PATH_SECRET || '').trim();
-const API_KEY = String(process.env.API_KEY || '').trim();
+const API_KEY = String(process.env.API_KEY || process.env.API_TOKEN || '').trim();
 const TIMEOUT = Number(process.env.GGE_RESPONSE_TIMEOUT_MS || 10000);
 const CONFIGURED_ZONES = String(process.env.GGE_ZONES || process.env.GGE_ZONE || 'EmpireEx_25')
     .split(',')
@@ -64,9 +64,6 @@ function statusPayload(sockets) {
     for (const zone of CONFIGURED_ZONES) {
         if (!(zone in status)) status[zone] = false;
     }
-    if (SECRET) {
-        status[SECRET] = Object.values(status).some(Boolean);
-    }
     return status;
 }
 
@@ -96,7 +93,7 @@ module.exports = function (sockets) {
     app.use((req, res, next) => {
         res.header('Access-Control-Allow-Origin', '*');
         res.header('Access-Control-Allow-Methods', 'GET,POST');
-        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-API-Key');
+        res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, X-API-Key, Authorization');
         next();
     });
 
@@ -129,12 +126,17 @@ module.exports = function (sockets) {
                 req.url = req.url.slice(prefix.length) || '/';
             }
         }
+        const tokenOk =
+            !API_KEY ||
+            req.get('X-API-Key') === API_KEY ||
+            req.get('Authorization') === `Bearer ${API_KEY}`;
         req.secretOk = secretOk;
-        if (secretOk) return next();
-        if (API_KEY && req.get('X-API-Key') === API_KEY) return next();
-        if (!SECRET && !API_KEY) return next();
-        if (SECRET) return res.status(404).json({ error: 'Not found' });
-        return res.status(401).json({ error: 'Unauthorized' });
+        req.tokenOk = tokenOk;
+        // Both factors are required when both are configured: the secret path
+        // hides the route, the token authenticates the caller.
+        if (SECRET && !secretOk) return res.status(404).json({ error: 'Not found' });
+        if (API_KEY && !tokenOk) return res.status(401).json({ error: 'Unauthorized' });
+        return next();
     });
 
     // EN: CORS proxy for GGS XML/translations. Kept for compatibility.
