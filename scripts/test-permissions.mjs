@@ -21,6 +21,7 @@ const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': '
 const checks = [
   ['view select', 'GET', '/rest/v1/v_storm_forts?select=position_x&limit=1', null, (status) => status === 200],
   ['base table select blocked', 'GET', '/rest/v1/players?select=id&limit=1', null, (status) => status === 401 || status === 403],
+  ['scrape_state select blocked', 'GET', '/rest/v1/scrape_state?select=key&limit=1', null, (status) => status === 401 || status === 403],
   ['view update blocked', 'PATCH', '/rest/v1/v_storm_forts?position_x=eq.597&position_y=eq.667', { victory_count: 1 }, (status) => status === 401 || status === 403],
   ['view insert blocked', 'POST', '/rest/v1/v_dungeons_history', { kid: 1, position_x: 1, position_y: 1, attacked_at: new Date().toISOString() }, (status) => status === 401 || status === 403],
   ['rpc blocked', 'POST', '/rest/v1/rpc/upsert_storm_scan', {}, (status) => status >= 400],
