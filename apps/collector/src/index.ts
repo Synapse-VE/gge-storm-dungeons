@@ -10,6 +10,7 @@ const onceJob = onceIndex >= 0 ? arguments_[onceIndex + 1] : '';
 
 let stormRunning = false;
 let dungeonRunning = false;
+let initRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function storm(): Promise<void> {
   if (stormRunning) {
@@ -51,6 +52,16 @@ async function dungeonInit(): Promise<void> {
 }
 
 async function dungeonInitIfDue(): Promise<void> {
+  if (dungeonRunning) {
+    if (!initRetryTimer) {
+      console.log('Dungeon job running; retrying init in 10 minutes');
+      initRetryTimer = setTimeout(() => {
+        initRetryTimer = null;
+        void dungeonInitIfDue();
+      }, 10 * 60 * 1000);
+    }
+    return;
+  }
   if (!(await isDungeonInitDue())) {
     console.log('Dungeon init is not due yet, skipping');
     return;

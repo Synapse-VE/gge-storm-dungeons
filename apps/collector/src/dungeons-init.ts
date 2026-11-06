@@ -4,6 +4,7 @@ import { env } from './env';
 
 import { MAP_SIZE, REALM_KIDS, mapTiles, type Tile } from './dungeon-plan';
 import { collectDungeons, type DungeonRow } from './dungeon-parse';
+import { isDungeonInitDueAt } from './dungeon-state';
 
 const CHUNK_SIZE = 500;
 const STATE_KEY = 'dungeons_init';
@@ -67,10 +68,7 @@ export async function isDungeonInitDue(maxAgeDays = 7): Promise<boolean> {
   try {
     const state = await getState();
     const { count } = await supabase.from('dungeons').select('*', { count: 'exact', head: true });
-    if (!count) return true;
-    if (!state?.completed_at) return true;
-    const ageMs = Date.now() - new Date(state.completed_at).getTime();
-    return !Number.isFinite(ageMs) || ageMs >= maxAgeDays * 24 * 60 * 60 * 1000;
+    return isDungeonInitDueAt(state?.completed_at, count, Date.now(), maxAgeDays);
   } catch (error) {
     console.error('Could not read dungeon init state:', error instanceof Error ? error.message : error);
     return true;

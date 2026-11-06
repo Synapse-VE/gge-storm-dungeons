@@ -106,7 +106,7 @@ Comprobá `http://127.0.0.1:3100/ready` y después:
 cd ../..
 npm run collector:storm     # un barrido completo
 npm run collector:dungeons  # refresco de cooldowns
-npm run collector           # cron: storm */10, dungeons */15, init lunes 03:00 UTC
+npm run collector           # cron: storm */10, dungeons */15, init lunes 03:05 UTC
 ```
 
 6. Frontend:
@@ -128,7 +128,7 @@ Rutas: `/storm-tracker` y `/dungeons` (la raíz redirige a Storm).
   `global_available_at` / `player_available_at` / `player_id`.
 - **Dungeons (init/discovery)**: barrido completo de los 3 reinos (13×13 tiles de 100×100 por
   reino, 507 `gaa`) que descubre dungeons nuevos y refresca cooldowns. Corre automáticamente
-  los **lunes 03:00 UTC** y al arrancar si el estado `scrape_state.dungeons_init` tiene más de
+  los **lunes 03:05 UTC** y al arrancar si el estado `scrape_state.dungeons_init` tiene más de
   7 días o no existe. No hay paso manual.
 - **Cron**: `node-cron` dentro del collector; no depende de Render Cron ni de GitHub Actions.
   En Render se puede mantener el servicio despierto con un ping externo (cron-job.org) a
@@ -209,6 +209,11 @@ dashboard `GGE_USERNAME`, `GGE_PASSWORD`, `API_PATH_SECRET`, `API_KEY`, `SUPABAS
 
 > Si el WAF de Goodgame bloquea la IP de Render, el README del `empire-api` ya documenta el
 > plan B: correr el bridge en una máquina residencial y exponerlo por un túnel.
+
+## Runbook
+
+Ver [`docs/RUNBOOK.md`](docs/RUNBOOK.md) para arranque, rotación de token, cuenta baneada,
+Render, tests y Pages.
 
 ## Créditos y aviso
 
