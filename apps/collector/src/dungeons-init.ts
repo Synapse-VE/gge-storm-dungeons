@@ -2,23 +2,13 @@ import { gaa, isOk, sleep, waitForReady } from './game';
 import { recordRun, supabase } from './db';
 import { env } from './env';
 
-const MAP_SIZE = 1286;
-const SCAN_SPAN = 100;
-const SCAN_SPACING = 101;
-const REALM_KIDS = [1, 2, 3];
+import { MAP_SIZE, REALM_KIDS, mapTiles, type Tile } from './dungeon-plan';
+
 const DUNGEON_OBJECT_ID = 11;
 const PLAYER_COOLDOWN_SECONDS = 4 * 24 * 60 * 60;
 const CHUNK_SIZE = 500;
 const STATE_KEY = 'dungeons_init';
 const MAX_FAILED_TILES = 20;
-
-interface Tile {
-  kid: number;
-  AX1: number;
-  AY1: number;
-  AX2: number;
-  AY2: number;
-}
 
 interface DungeonRow {
   kid: number;
@@ -37,23 +27,7 @@ export interface DungeonInitResult {
   realms: number;
 }
 
-export function mapTiles(kid: number): Tile[] {
-  const tiles: Tile[] = [];
-  for (let y = 0; y < MAP_SIZE; y += SCAN_SPACING) {
-    for (let x = 0; x < MAP_SIZE; x += SCAN_SPACING) {
-      tiles.push({
-        kid,
-        AX1: x,
-        AY1: y,
-        AX2: Math.min(x + SCAN_SPAN, MAP_SIZE),
-        AY2: Math.min(y + SCAN_SPAN, MAP_SIZE),
-      });
-    }
-  }
-  return tiles;
-}
-
-function collectDungeons(tile: Tile, objects: any[], updates: Map<string, DungeonRow>): number {
+export function collectDungeons(tile: Tile, objects: any[], updates: Map<string, DungeonRow>): number {
   const now = Date.now();
   let added = 0;
   for (const row of objects) {

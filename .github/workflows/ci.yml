@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Collector install and build
+        working-directory: apps/collector
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+      - name: Dungeon init plan
+        run: node scripts/test-dungeon-plan.mjs
+      - name: Web install and typecheck
+        working-directory: apps/web
+        run: |
+          npm ci --no-audit --no-fund
+          npx tsc --noEmit -p tsconfig.app.json

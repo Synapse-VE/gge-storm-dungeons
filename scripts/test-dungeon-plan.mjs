@@ -1,7 +1,7 @@
 // Verifies the automatic dungeon init covers the whole map without overlaps.
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { mapTiles } = require('../apps/collector/dist/dungeons-init.js');
+const { mapTiles } = require('../apps/collector/dist/dungeon-plan.js');
 
 const MAP_SIZE = 1286;
 let failed = 0;

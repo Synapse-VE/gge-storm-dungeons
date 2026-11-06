@@ -188,6 +188,9 @@ SMOKE_URL=https://synapse-ve.github.io/gge-storm-dungeons/storm-tracker npm run 
 `test:smoke` usa Chrome headless (o `CHROME_BIN`). Necesita la web corriendo en
 `http://127.0.0.1:4300` salvo que se pase `SMOKE_URL`.
 
+El workflow `.github/workflows/ci.yml` corre el build del collector, `test:init-plan` y el
+typecheck del frontend en cada push/PR, sin necesitar secretos.
+
 ## Deploy
 
 ### GitHub Pages
