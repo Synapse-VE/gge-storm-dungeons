@@ -3,22 +3,11 @@ import { recordRun, supabase } from './db';
 import { env } from './env';
 
 import { MAP_SIZE, REALM_KIDS, mapTiles, type Tile } from './dungeon-plan';
+import { collectDungeons, type DungeonRow } from './dungeon-parse';
 
-const DUNGEON_OBJECT_ID = 11;
-const PLAYER_COOLDOWN_SECONDS = 4 * 24 * 60 * 60;
 const CHUNK_SIZE = 500;
 const STATE_KEY = 'dungeons_init';
 const MAX_FAILED_TILES = 20;
-
-interface DungeonRow {
-  kid: number;
-  position_x: number;
-  position_y: number;
-  player_id: number | null;
-  global_available_at: string;
-  player_available_at: string;
-  updated_at: string;
-}
 
 export interface DungeonInitResult {
   dungeons: number;
@@ -27,33 +16,7 @@ export interface DungeonInitResult {
   realms: number;
 }
 
-export function collectDungeons(tile: Tile, objects: any[], updates: Map<string, DungeonRow>): number {
-  const now = Date.now();
-  let added = 0;
-  for (const row of objects) {
-    if (!Array.isArray(row) || String(row[0]) !== String(DUNGEON_OBJECT_ID)) continue;
-    const x = Number(row[1]);
-    const y = Number(row[2]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-    if (x < 0 || y < 0 || x > MAP_SIZE || y > MAP_SIZE) continue;
-    const remaining = Math.max(0, Number(row[5]) || 0);
-    const attacker = Number(row[6]) || null;
-    const key = `${tile.kid}:${x}:${y}`;
-    updates.set(key, {
-      kid: tile.kid,
-      position_x: x,
-      position_y: y,
-      player_id: attacker,
-      global_available_at: new Date(now + remaining * 1000).toISOString(),
-      player_available_at: new Date(now + (remaining + PLAYER_COOLDOWN_SECONDS) * 1000).toISOString(),
-      updated_at: new Date(now).toISOString(),
-    });
-    added++;
-  }
-  return added;
-}
-
-async function scanTile(tile: Tile): Promise<{ objects: any[]; failed: boolean }> {
+export async function scanTile(tile: Tile): Promise<{ objects: any[]; failed: boolean }> {
   try {
     const response = await gaa(tile.kid, tile.AX1, tile.AY1, tile.AX2, tile.AY2);
     if (isOk(response)) {
@@ -132,7 +95,7 @@ export async function runDungeonInit(): Promise<number> {
           failed++;
           continue;
         }
-        dungeons += collectDungeons(tile, response.objects, updates);
+        dungeons += collectDungeons(tile.kid, response.objects, updates);
         if (tileIndex % 10 === 9) {
           await sleep(25);
           if (tileIndex % 20 === 19 && !(await waitForReady(15_000))) {

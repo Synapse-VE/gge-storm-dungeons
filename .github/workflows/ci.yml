@@ -21,8 +21,10 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
-      - name: Dungeon init plan
-        run: node scripts/test-dungeon-plan.mjs
+      - name: Dungeon init plan and parser
+        run: |
+          node scripts/test-dungeon-plan.mjs
+          node scripts/test-dungeon-parse.mjs
       - name: Web install and typecheck
         working-directory: apps/web
         run: |
