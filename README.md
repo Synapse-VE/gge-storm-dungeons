@@ -168,8 +168,25 @@ cerradas por RLS y sin grants para `anon`/`authenticated`. Las vistas son de sol
   `npm run test:smoke` pasa sin el toast.
 - **Local**: `empire-api` en `:3100` con path secret + token, web en `:4300`, collector con
   `node-cron`; storm 540/540 y dungeons OK.
+- **Tests**: `test:permissions`, `test:init-plan` y `test:smoke` pasan; el smoke también se
+  corre contra Pages.
+- **Init automático**: plan de 507 tiles verificado (3 reinos x 169). La corrida real contra
+  GGE necesita una cuenta de juego sana; GGE puede banear cuentas usadas por scrapers, así que
+  usá una cuenta dedicada.
 - **Docker**: imagen `gge-storm-dungeons:local` construida (427 MB), lista para Render.
 - **Render**: pendiente de deploy; el blueprint y el Dockerfile ya están probados.
+
+## Tests
+
+```bash
+npm run test:permissions   # anon solo lee vistas; tablas y escrituras bloqueadas
+npm run test:init-plan     # 3 reinos x 169 tiles, sin solapes ni fuera del mapa
+npm run test:smoke         # abre storm y falla si aparece el toast de error
+SMOKE_URL=https://synapse-ve.github.io/gge-storm-dungeons/storm-tracker npm run test:smoke
+```
+
+`test:smoke` usa Chrome headless (o `CHROME_BIN`). Necesita la web corriendo en
+`http://127.0.0.1:4300` salvo que se pase `SMOKE_URL`.
 
 ## Deploy
 

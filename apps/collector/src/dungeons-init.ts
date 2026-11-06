@@ -37,7 +37,7 @@ export interface DungeonInitResult {
   realms: number;
 }
 
-function mapTiles(kid: number): Tile[] {
+export function mapTiles(kid: number): Tile[] {
   const tiles: Tile[] = [];
   for (let y = 0; y < MAP_SIZE; y += SCAN_SPACING) {
     for (let x = 0; x < MAP_SIZE; x += SCAN_SPACING) {

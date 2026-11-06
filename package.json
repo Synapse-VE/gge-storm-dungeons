@@ -12,6 +12,8 @@
     "web": "npm --prefix apps/web start",
     "empire-api": "npm --prefix apps/empire-api start",
     "test:smoke": "node scripts/smoke-no-toast.mjs",
-    "init": "npm --prefix apps/collector run init"
+    "init": "npm --prefix apps/collector run init",
+    "test:permissions": "node scripts/test-permissions.mjs",
+    "test:init-plan": "npm --prefix apps/collector run build && node scripts/test-dungeon-plan.mjs"
   }
 }
