@@ -2,8 +2,9 @@ import { gaa, isOk, sleep, waitForReady } from './game';
 import { recordRun, supabase } from './db';
 import { env } from './env';
 
-import { MAP_SIZE, REALM_KIDS, mapTiles, type Tile } from './dungeon-plan';
-import { collectDungeons, type DungeonRow } from './dungeon-parse';
+import type { Tile } from './dungeon-plan';
+import type { DungeonRow } from './dungeon-parse';
+import { scanDungeonRealms } from './dungeon-runner';
 import { isDungeonInitDueAt } from './dungeon-state';
 
 const CHUNK_SIZE = 500;
@@ -30,8 +31,7 @@ export async function scanTile(tile: Tile): Promise<{ objects: any[]; failed: bo
   return { objects: [], failed: true };
 }
 
-async function flush(updates: Map<string, DungeonRow>): Promise<void> {
-  const rows = [...updates.values()];
+async function flush(rows: DungeonRow[]): Promise<void> {
   for (let index = 0; index < rows.length; index += CHUNK_SIZE) {
     const chunk = rows.slice(index, index + CHUNK_SIZE);
     const { error } = await supabase
@@ -79,39 +79,29 @@ export async function runDungeonInit(): Promise<number> {
   const { value, error } = await recordRun('dungeons-init', async () => {
     if (!(await waitForReady())) throw new Error('empire-api is not ready');
 
-    const updates = new Map<string, DungeonRow>();
-    let tiles = 0;
-    let failed = 0;
-    let dungeons = 0;
-
-    for (const [index, kid] of REALM_KIDS.entries()) {
-      const kidTiles = mapTiles(kid);
-      for (const [tileIndex, tile] of kidTiles.entries()) {
+    let scanned = 0;
+    const result = await scanDungeonRealms({
+      scan: async (tile) => {
         const response = await scanTile(tile);
-        tiles++;
-        if (response.failed) {
-          failed++;
-          continue;
+        scanned++;
+        if (scanned % 20 === 0 && !(await waitForReady(15_000))) {
+          throw new Error('empire-api lost readiness during dungeon init');
         }
-        dungeons += collectDungeons(tile.kid, response.objects, updates);
-        if (tileIndex % 10 === 9) {
-          await sleep(25);
-          if (tileIndex % 20 === 19 && !(await waitForReady(15_000))) {
-            throw new Error('empire-api lost readiness during dungeon init');
-          }
-        }
-      }
-      await flush(updates);
-      console.log(`Dungeon init realm ${kid}: ${kidTiles.length} tiles, ${updates.size} unique dungeons so far`);
-      if (index < REALM_KIDS.length - 1) await sleep(env.dungeonInitPauseMs);
-    }
+        return response;
+      },
+      flush,
+      pause: sleep,
+      pauseMs: env.dungeonInitPauseMs,
+      onRealm: (kid, tiles, unique) => {
+        console.log(`Dungeon init realm ${kid}: ${tiles} tiles, ${unique} unique dungeons so far`);
+      },
+    });
 
-    const result: DungeonInitResult = { dungeons: updates.size, tiles, failed, realms: REALM_KIDS.length };
-    if (failed > MAX_FAILED_TILES) {
-      throw new Error(`${failed}/${tiles} dungeon init tiles failed`);
+    if (result.failed > MAX_FAILED_TILES) {
+      throw new Error(`${result.failed}/${result.tiles} dungeon init tiles failed`);
     }
     await setState(result);
-    console.log(`Dungeon init done: ${result.dungeons} dungeons, ${tiles} tiles, ${failed} failed`);
+    console.log(`Dungeon init done: ${result.dungeons} dungeons, ${result.tiles} tiles, ${result.failed} failed`);
     return result.dungeons;
   });
 

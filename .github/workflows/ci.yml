@@ -26,6 +26,7 @@ jobs:
           node scripts/test-dungeon-plan.mjs
           node scripts/test-dungeon-parse.mjs
           node scripts/test-dungeon-due.mjs
+          node scripts/test-dungeon-runner.mjs
       - name: Web install and typecheck
         working-directory: apps/web
         run: |
